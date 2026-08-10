@@ -14,7 +14,7 @@ Pawns of War 存档解包 / 回包工具。
 ## 目录结构
 
 ```text
-powsavetool/
+SaveTool/
 ├── README.md
 ├── LICENSE
 ├── .gitignore
