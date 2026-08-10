@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pawns of War 存档工具（离线版）</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --line: #d9dde3;
+    --text: #20242a;
+    --muted: #6b7280;
+    --blue: #2563eb;
+    --green: #15803d;
+    --red: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 18px 14px 40px; }
+  h1 { font-size: 22px; margin: 6px 0 2px; }
+  .sub { color: var(--muted); margin: 0 0 14px; font-size: 13px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+    margin: 12px 0;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  label { font-size: 13px; color: var(--muted); }
+  input[type=file] { width: 100%; }
+  input[type=text] {
+    flex: 1;
+    min-width: 150px;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  textarea {
+    width: 100%;
+    min-height: 46vh;
+    resize: vertical;
+    font: 12px/1.5 Consolas, "Courier New", monospace;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fbfcfe;
+  }
+  button {
+    padding: 10px 14px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #ffffff;
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .radio-row { display: flex; gap: 16px; align-items: center; }
+  .radio-row label { color: var(--text); display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  #status { margin-top: 10px; font-size: 13px; min-height: 20px; white-space: pre-wrap; word-break: break-all; }
+  #status.ok { color: var(--green); }
+  #status.err { color: var(--red); }
+  details { font-size: 13px; color: var(--muted); }
+  details summary { cursor: pointer; color: var(--text); }
+  details p, details li { margin: 6px 0; }
+  code { background: #eef1f5; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pawns of War 存档工具</h1>
+  <p class="sub">离线 HTML 版 · 不联网 · 不上传 · 支持 POWSAVE1 / POWMIGR1</p>
+
+  <details open>
+    <summary>怎么用（外行也能看）</summary>
+    <p>1. 先把存档文件复制到手机能访问的位置，例如 <code>Download</code>；</p>
+    <p>2. 点下面“选择存档文件”，再点“解包为 JSON”；</p>
+    <p>3. 在文本框里修改数据；</p>
+    <p>4. 点“回包并下载”，把下载的文件放回游戏存档位置。</p>
+    <p>Windows：直接选择 <code>save_file</code> 即可，改完覆盖回去。</p>
+    <p>Android / iOS：系统限制浏览器不能直接读写游戏沙盒，需要先复制出来、改完再复制回去。</p>
+  </details>
+
+  <div class="card">
+    <div class="row">
+      <label>存档文件</label>
+    </div>
+    <input type="file" id="fileInput" accept="*/*">
+    <div class="row">
+      <button class="primary" id="btnUnpack">解包为 JSON</button>
+      <button id="btnDownloadJson">下载 JSON</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <label>JSON 内容（可编辑）</label>
+    </div>
+    <textarea id="jsonArea" spellcheck="false" placeholder="先选择存档文件并解包，这里会出现 JSON"></textarea>
+  </div>
+
+  <div class="card">
+    <div class="row radio-row">
+      <label><input type="radio" name="mode" id="modeSave" checked> 普通存档 POWSAVE1</label>
+      <label><input type="radio" name="mode" id="modeMigration"> 迁移文件 POWMIGR1</label>
+    </div>
+    <div class="row">
+      <label>输出文件名</label>
+      <input type="text" id="outName" value="save_file">
+    </div>
+    <div class="row">
+      <button class="primary" id="btnPack">回包并下载</button>
+    </div>
+  </div>
+
+  <div id="status"></div>
+</div>
+
+<script>
+"use strict";
+
+const SAVE_MAGIC = "POWSAVE1";
+const MIGRATION_MAGIC = "POWMIGR1";
+const MASTER = hexToBytes("71A42C19D3588EB14FC625906D33FA07C25BE841169D74AB38F063CE8512D74A");
+
+const fileInput = document.getElementById("fileInput");
+const btnUnpack = document.getElementById("btnUnpack");
+const btnPack = document.getElementById("btnPack");
+const btnDownloadJson = document.getElementById("btnDownloadJson");
+const jsonArea = document.getElementById("jsonArea");
+const outName = document.getElementById("outName");
+const modeSave = document.getElementById("modeSave");
+const modeMigration = document.getElementById("modeMigration");
+const statusEl = document.getElementById("status");
+
+let currentBytes = null;
+let currentName = "";
+
+function hexToBytes(hex) {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return out;
+}
+
+function bytesToAscii(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return s;
+}
+
+function concatBytes() {
+  let total = 0;
+  for (let i = 0; i < arguments.length; i++) total += arguments[i].length;
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (let i = 0; i < arguments.length; i++) {
+    out.set(arguments[i], off);
+    off += arguments[i].length;
+  }
+  return out;
+}
+
+function equalBytes(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function setStatus(msg, kind) {
+  statusEl.textContent = msg;
+  statusEl.className = kind === "ok" ? "ok" : (kind === "err" ? "err" : "");
+}
+
+async function importHmacKey(bytes) {
+  return crypto.subtle.importKey("raw", bytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+}
+
+async function hmacBytes(key, data) {
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, data));
+}
+
+async function deriveKey(purpose) {
+  const key = await importHmacKey(MASTER);
+  return hmacBytes(key, new TextEncoder().encode(purpose));
+}
+
+async function aesDecrypt(ct, iv, keyBytes) {
+  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-CBC" }, false, ["decrypt"]);
+  return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-CBC", iv }, key, ct));
+}
+
+async function aesEncrypt(pt, iv, keyBytes) {
+  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-CBC" }, false, ["encrypt"]);
+  return new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CBC", iv }, key, pt));
+}
+
+function downloadBytes(bytes, name) {
+  const blob = new Blob([bytes], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 1000);
+}
+
+fileInput.addEventListener("change", async () => {
+  const f = fileInput.files && fileInput.files[0];
+  if (!f) return;
+  currentBytes = new Uint8Array(await f.arrayBuffer());
+  currentName = f.name;
+  const magic = bytesToAscii(currentBytes.slice(0, 8));
+  if (magic === SAVE_MAGIC) {
+    modeSave.checked = true;
+    outName.value = "save_file";
+  } else if (magic === MIGRATION_MAGIC) {
+    modeMigration.checked = true;
+    outName.value = "render_cache.dat";
+  }
+  setStatus("已载入：" + f.name + "（" + currentBytes.length + " 字节）", "ok");
+});
+
+modeSave.addEventListener("change", () => { if (modeSave.checked) outName.value = "save_file"; });
+modeMigration.addEventListener("change", () => { if (modeMigration.checked) outName.value = "render_cache.dat"; });
+
+btnUnpack.addEventListener("click", async () => {
+  try {
+    if (!currentBytes) throw new Error("请先选择存档文件。");
+    const b = currentBytes;
+    if (b.length < 62) throw new Error("文件太小，不是有效的加密存档。");
+
+    const magic = bytesToAscii(b.slice(0, 8));
+    let aesPurpose, hmacPurpose;
+    if (magic === SAVE_MAGIC) {
+      aesPurpose = "POW_SAVE_AES_KEY";
+      hmacPurpose = "POW_SAVE_HMAC_KEY";
+      modeSave.checked = true;
+      outName.value = "save_file";
+    } else if (magic === MIGRATION_MAGIC) {
+      aesPurpose = "POW_MIGRATION_AES_KEY";
+      hmacPurpose = "POW_MIGRATION_HMAC_KEY";
+      modeMigration.checked = true;
+      outName.value = "render_cache.dat";
+    } else {
+      throw new Error("无法识别的魔数：" + magic);
+    }
+
+    const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    const payloadLen = dv.getUint32(10, true);
+    if (payloadLen !== b.length - 62) {
+      throw new Error("头部长度与文件大小不匹配。");
+    }
+
+    const iv = b.slice(14, 30);
+    const ct = b.slice(30, 30 + payloadLen);
+    const storedHmac = b.slice(b.length - 32);
+
+    const aesKey = await deriveKey(aesPurpose);
+    const hmacKey = await deriveKey(hmacPurpose);
+    const computedHmac = await hmacBytes(await importHmacKey(hmacKey), b.slice(0, b.length - 32));
+    if (!equalBytes(computedHmac, storedHmac)) {
+      throw new Error("HMAC 校验失败，文件可能损坏或被修改。");
+    }
+
+    const plain = await aesDecrypt(ct, iv, aesKey);
+    const json = new TextDecoder().decode(plain);
+    JSON.parse(json);
+    jsonArea.value = json;
+    setStatus("解包成功：" + json.length + " 字符 JSON。", "ok");
+  } catch (e) {
+    setStatus("解包失败：" + e.message, "err");
+  }
+});
+
+btnPack.addEventListener("click", async () => {
+  try {
+    const migration = modeMigration.checked;
+    const magic = migration ? MIGRATION_MAGIC : SAVE_MAGIC;
+    const aesPurpose = migration ? "POW_MIGRATION_AES_KEY" : "POW_SAVE_AES_KEY";
+    const hmacPurpose = migration ? "POW_MIGRATION_HMAC_KEY" : "POW_SAVE_HMAC_KEY";
+    const json = jsonArea.value.trim();
+    if (!json) throw new Error("JSON 内容为空。");
+    JSON.parse(json);
+
+    const plain = new TextEncoder().encode(json);
+    const iv = crypto.getRandomValues(new Uint8Array(16));
+    const aesKey = await deriveKey(aesPurpose);
+    const hmacKey = await deriveKey(hmacPurpose);
+    const ct = await aesEncrypt(plain, iv, aesKey);
+
+    const header = new Uint8Array(14);
+    for (let i = 0; i < 8; i++) header[i] = magic.charCodeAt(i);
+    header[8] = 1;
+    header[9] = 0x10;
+    new DataView(header.buffer).setUint32(10, ct.length, true);
+
+    const body = concatBytes(header, iv, ct);
+    const sig = await hmacBytes(await importHmacKey(hmacKey), body);
+    const out = concatBytes(body, sig);
+    const name = outName.value.trim() || (migration ? "render_cache.dat" : "save_file");
+    downloadBytes(out, name);
+    setStatus("回包成功，已开始下载：" + name + "（" + out.length + " 字节）", "ok");
+  } catch (e) {
+    setStatus("回包失败：" + e.message, "err");
+  }
+});
+
+btnDownloadJson.addEventListener("click", () => {
+  try {
+    const json = jsonArea.value.trim();
+    if (!json) throw new Error("JSON 内容为空。");
+    JSON.parse(json);
+    downloadBytes(new TextEncoder().encode(json), "save_unpack.json");
+    setStatus("JSON 已下载。", "ok");
+  } catch (e) {
+    setStatus("下载 JSON 失败：" + e.message, "err");
+  }
+});
+</script>
+</body>
+</html>
