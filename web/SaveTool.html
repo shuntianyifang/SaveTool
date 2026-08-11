@@ -105,6 +105,10 @@
     <input type="file" id="fileInput" accept="*/*">
     <div class="row">
       <button class="primary" id="btnUnpack">解包为 JSON</button>
+    </div>
+    <div class="row">
+      <label>输出JSON文件名(.json)</label>
+      <input type="text" id="outNameJSON" value="save_unpack">
       <button id="btnDownloadJson">下载 JSON</button>
     </div>
   </div>
@@ -157,6 +161,7 @@ const btnPack = document.getElementById("btnPack");
 const btnDownloadJson = document.getElementById("btnDownloadJson");
 const jsonArea = document.getElementById("jsonArea");
 const outName = document.getElementById("outName");
+const outNameJSON = document.getElementById("outNameJSON");
 const modeSave = document.getElementById("modeSave");
 const modeMigration = document.getElementById("modeMigration");
 const statusEl = document.getElementById("status");
@@ -359,9 +364,10 @@ btnPack.addEventListener("click", async () => {
 btnDownloadJson.addEventListener("click", () => {
   try {
     const json = jsonArea.value.trim();
+    const name = outNameJSON.value.trim() || "save_unpack";
     if (!json) throw new Error("JSON 内容为空。");
     JSON.parse(json);
-    downloadBytes(new TextEncoder().encode(json), "save_unpack.json");
+    downloadBytes(new TextEncoder().encode(json), name + ".json");
     setStatus("JSON 已下载。", "ok");
   } catch (e) {
     setStatus("下载 JSON 失败：" + e.message, "err");
