@@ -1,0 +1,77 @@
+<Window x:Class="PowSaveEditor.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pawns of War Save Editor" Height="720" Width="1180"
+        WindowStartupLocation="CenterScreen">
+    <DockPanel Margin="10">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+            <Button x:Name="OpenButton" Content="Open Save" Width="100" Click="OpenButton_Click"/>
+            <Button x:Name="SaveButton" Content="Save" Width="80" Margin="8,0,0,0" Click="SaveButton_Click"/>
+            <TextBlock Text="Language:" VerticalAlignment="Center" Margin="16,0,4,0"/>
+            <ComboBox x:Name="LanguageBox" Width="90" SelectionChanged="LanguageBox_SelectionChanged"/>
+            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="16,0,4,0"/>
+            <TextBox x:Name="SearchBox" Width="240" TextChanged="SearchBox_TextChanged"/>
+        </StackPanel>
+
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <TextBlock x:Name="StatusText" Text="Open a save file to start."/>
+            </StatusBarItem>
+        </StatusBar>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="320"/>
+            </Grid.ColumnDefinitions>
+
+            <TabControl x:Name="MainTabs" Grid.Column="0">
+                <TabItem Header="Weapons">
+                    <ListBox x:Name="WeaponList" SelectionChanged="WeaponList_SelectionChanged">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{Binding SpritePath}" Width="32" Height="32" Margin="0,0,8,0"/>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Display}" FontWeight="Bold"/>
+                                        <TextBlock Text="{Binding Detail}" Foreground="Gray" FontSize="11"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </TabItem>
+                <TabItem Header="Characters">
+                    <ListBox x:Name="CharacterList" SelectionChanged="CharacterList_SelectionChanged">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{Binding SpritePath}" Width="32" Height="32" Margin="0,0,8,0"/>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Display}" FontWeight="Bold"/>
+                                        <TextBlock Text="{Binding Detail}" Foreground="Gray" FontSize="11"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </TabItem>
+            </TabControl>
+
+            <GroupBox Grid.Column="1" Header="Item Detail" Margin="10,0,0,0">
+                <StackPanel>
+                    <TextBlock Text="Slot:"/>
+                    <TextBox x:Name="SlotBox" IsReadOnly="True"/>
+                    <TextBlock Text="Current ID:"/>
+                    <TextBox x:Name="IdBox" IsReadOnly="True"/>
+                    <TextBlock Text="Internal Name:"/>
+                    <TextBox x:Name="NameBox" IsReadOnly="True"/>
+                    <TextBlock Text="New ID (0 = clear):"/>
+                    <TextBox x:Name="NewIdBox"/>
+                    <Button x:Name="ApplyButton" Content="Apply ID" Margin="0,8,0,0" Click="ApplyButton_Click"/>
+                    <Image x:Name="PreviewImage" Width="96" Height="96" Margin="0,12,0,0" Stretch="Uniform"/>
+                </StackPanel>
+            </GroupBox>
+        </Grid>
+    </DockPanel>
+</Window>

@@ -1,55 +1,34 @@
 # POW SaveTool
 
-Pawns of War 存档解包 / 回包工具。
+Pawns of War 存档解包 / 回包工具，支持直接读取、修改和重新加密游戏存档，不依赖游戏本体运行。
 
-支持直接读取、修改和重新加密游戏存档，不依赖游戏本体运行。
+## 版本结构
 
-## 平台
-
-| 平台 | 源码 | 使用方式 |
+| 目录 | 版本 | 说明 |
 |---|---|---|
-| Windows | [windows/](windows/) | 编译成 `SaveTool.exe` 使用 |
-| Web | [web/](web/) | 浏览器直接打开 `SaveTool.html`，Win / Android / iOS 通用 |
+| `windows/` | WPF 可视版 | 当前推荐版本，带物品名、图标、搜索和存档回写 |
+| `web/` | 离线 HTML 版 | 浏览器直接打开，跨平台 |
+| `archive/legacy-windows-v1.0.0/` | 旧 CLI 版 | 已归档的无界面控制台版 |
 
-## 目录结构
+## Windows 可视版
 
-```text
-SaveTool/
-├── README.md
-├── LICENSE
-├── .gitignore
-├── windows/          Windows 版 C# 源码
-└── web/              离线 HTML 版
+源码在 [windows/](windows/)，项目文件为 `PowSaveEditor.csproj`。
+
+```powershell
+dotnet build windows/PowSaveEditor.csproj -c Release
 ```
 
-## 用法
+功能：
 
-Windows 版：
-
-```text
-SaveTool unpack <加密存档> [输出.json]
-SaveTool pack <明文json> [输出文件] [--migration]
-SaveTool verify <加密存档>
-```
-
-默认输出：
-
-```text
-unpack -> save_unpack.json
-pack   -> save_file
-pack --migration -> render_cache.dat
-```
-
-Web 版：
-
-1. 用 Chrome / Edge / Safari 打开 `SaveTool.html`；
-2. 选择存档文件；
-3. 点“解包为 JSON”，编辑后点“回包并下载”。
+- 打开并解密 `POWSAVE1` 加密存档
+- 武器 / 角色列表，显示本地化名称和图标
+- 搜索、语言切换、ID 编辑
+- 保存时重新加密并生成 HMAC，自动备份原文件
 
 ## 存档格式
 
 ```text
-POWSAVE1  | 01 10 | 密文长度(4字节LE) | IV(16字节) | AES-256-CBC密文 | HMAC-SHA256(32字节)
+POWSAVE1 | 01 10 | 密文长度(4字节LE) | IV(16字节) | AES-256-CBC密文 | HMAC-SHA256(32字节)
 ```
 
 - 存档魔数：`POWSAVE1`
@@ -70,28 +49,6 @@ AES key  = HMAC-SHA256(MasterKey, "POW_MIGRATION_AES_KEY")
 HMAC key = HMAC-SHA256(MasterKey, "POW_MIGRATION_HMAC_KEY")
 ```
 
-## 控制台权限说明
-
-游戏控制台权限不在存档 JSON 中，而是运行时静态字段：
-
-```text
-Save.ag_dev_mode  = true -> Developer
-Save.ag_test_mode = true -> Tester
-否则                    -> Player
-```
-
-修改存档 JSON 无法改变权限。需要解锁控制台时，应修改游戏二进制中命令注册的 `requiredAccess`。
-
-## 构建 Windows 版
-
-需要 .NET 8 SDK：
-
-```powershell
-dotnet publish windows/SaveTool.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
-```
-
-## 许可证
+## 许可
 
 MIT License，见 [LICENSE](LICENSE)。
-
-本工具仅用于本地存档分析、备份与恢复，请遵守游戏自身的使用条款。
