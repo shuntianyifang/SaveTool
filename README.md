@@ -18,16 +18,16 @@ Pawns of War 存档解包 / 回包工具，支持直接读取、修改和重新�
 dotnet build windows/PowSaveEditor.csproj -c Release
 ```
 
-## 离线 HTML 版  
-
-见`/web/README.md`
-
 功能：
 
 - 打开并解密 `save_file` 加密存档
 - 武器 / 角色列表，显示本地化名称和图标
 - 搜索、语言切换、ID 编辑
 - 保存时重新加密并生成 HMAC，自动备份原文件
+
+## 离线 HTML 版  
+
+见`/web/README.md`  
 
 ## 存档格式
 
