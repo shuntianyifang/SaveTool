@@ -82,11 +82,19 @@
 
   <details open>
     <summary>怎么用（外行也能看）</summary>
-    <p>1. 先把存档文件复制到手机能访问的位置，例如 <code>Download</code>；</p>
+    <p>方法1：</p>
+    <p>1. 先把存档文件复制到设备能访问的位置，例如 <code>Download</code>；</p>
     <p>2. 点下面“选择存档文件”，再点“解包为 JSON”；</p>
     <p>3. 在文本框里修改数据；</p>
     <p>4. 点“回包并下载”，把下载的文件放回游戏存档位置。</p>
-    <p>Windows：直接选择 <code>save_file</code> 即可，改完覆盖回去。</p>
+    <p>方法2：</p>
+    <p>1. 先把存档文件复制到设备能访问的位置，例如 <code>Download</code>；</p>
+    <p>2. 点下面“选择存档文件”，再点“解包为 JSON”；</p>
+    <p>3. 点“下载 JSON”</p>
+    <p>4. 用其他软件编辑 JSON 文件；</p>
+    <p>5. 编辑完成后，点击“导入 JSON”，将 JSON 文件重新导入游戏存档工具。</p>
+    <p>6. 点“回包并下载”，把下载的文件放回游戏存档位置。</p>
+    <p>Windows：直接选择存档文件中的 <code>save_file</code> 即可，改完覆盖回去。</p>
     <p>Android / iOS：系统限制浏览器不能直接读写游戏沙盒，需要先复制出来、改完再复制回去。</p>
   </details>
 
@@ -98,6 +106,16 @@
     <div class="row">
       <button class="primary" id="btnUnpack">解包为 JSON</button>
       <button id="btnDownloadJson">下载 JSON</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <label>JSON 文件</label>
+    </div>
+    <input type="file" id="jsonFileInput" accept="*/*">
+    <div class="row">
+      <button class="primary" id="btnImportJson">导入 JSON</button>
     </div>
   </div>
 
@@ -134,6 +152,7 @@ const MASTER = hexToBytes("71A42C19D3588EB14FC625906D33FA07C25BE841169D74AB38F06
 
 const fileInput = document.getElementById("fileInput");
 const btnUnpack = document.getElementById("btnUnpack");
+const btnImportJson = document.getElementById("btnImportJson");
 const btnPack = document.getElementById("btnPack");
 const btnDownloadJson = document.getElementById("btnDownloadJson");
 const jsonArea = document.getElementById("jsonArea");
@@ -283,6 +302,25 @@ btnUnpack.addEventListener("click", async () => {
   } catch (e) {
     setStatus("解包失败：" + e.message, "err");
   }
+});
+
+btnImportJson.addEventListener("click", () => {
+  const f = document.getElementById("jsonFileInput").files && document.getElementById("jsonFileInput").files[0];
+  if (!f) {
+    setStatus("请先选择 JSON 文件。", "err");
+    return;
+  }
+  f.text().then(text => {
+    try {
+      JSON.parse(text);
+      jsonArea.value = text;
+      setStatus("已导入 JSON 文件：" + f.name + "（" + text.length + " 字符）", "ok");
+    } catch (e) {
+      setStatus("导入 JSON 失败：" + e.message, "err");
+    }
+  }).catch(err => {
+    setStatus("读取 JSON 文件失败：" + err.message, "err");
+  });
 });
 
 btnPack.addEventListener("click", async () => {
