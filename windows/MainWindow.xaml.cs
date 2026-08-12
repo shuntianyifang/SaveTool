@@ -8,6 +8,7 @@ namespace PowSaveEditor;
 
 public partial class MainWindow : Window
 {
+    private const string PlaceholderSprite = @"D:\POW\assets\sprites\placeholder.png";
     private readonly AssetIndex _index;
     private JsonObject _root;
     private JsonArray _wpnIds;
@@ -23,6 +24,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         string basePath = @"D:\POW\assets";
         _index = new AssetIndex(basePath);
+        UpdateStats();
         foreach (var lang in new[] { "en", "ru", "zh", "ko" })
             LanguageBox.Items.Add(lang);
         LanguageBox.SelectedIndex = 0;
@@ -52,6 +54,7 @@ public partial class MainWindow : Window
                 throw new InvalidDataException("ag_inv_wpn_id / ag_inv_char_id not found.");
             _currentPath = dlg.FileName;
             RefreshAll();
+            RawReload();
             Status("Loaded " + dlg.FileName);
         }
         catch (Exception ex)
@@ -68,6 +71,7 @@ public partial class MainWindow : Window
         RefreshWeapons();
         RefreshCharacters();
         RefreshModules();
+        UpdateStats();
     }
 
     private void RefreshWeapons()
@@ -115,7 +119,7 @@ public partial class MainWindow : Window
                 Internal = info.Internal,
                 Display = string.IsNullOrEmpty(info.Display) ? info.Internal : info.Display,
                 Detail = "count=" + count,
-                SpritePath = File.Exists(info.SpriteFile) ? info.SpriteFile : null
+                SpritePath = ResolveSprite(info.SpriteFile)
             });
         }
         return result;
@@ -137,10 +141,17 @@ public partial class MainWindow : Window
                 Internal = info.Internal,
                 Display = string.IsNullOrEmpty(info.Display) ? info.Internal : info.Display,
                 Detail = info.Detail,
-                SpritePath = File.Exists(info.SpriteFile) ? info.SpriteFile : null
+                SpritePath = ResolveSprite(info.SpriteFile)
             });
         }
         return result;
+    }
+
+    private static string ResolveSprite(string spriteFile)
+    {
+        return !string.IsNullOrEmpty(spriteFile) && File.Exists(spriteFile)
+            ? spriteFile
+            : PlaceholderSprite;
     }
 
     private void WeaponList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -234,6 +245,7 @@ public partial class MainWindow : Window
     {
         RefreshWeapons();
         RefreshCharacters();
+        RefreshModules();
     }
 
     private void LanguageBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -243,6 +255,56 @@ public partial class MainWindow : Window
             _index.CurrentLanguage = lang;
             RefreshAll();
         }
+    }
+
+    private void UpdateStats()
+    {
+        if (_wpnIds == null || _charIds == null)
+        {
+            StatsText.Text = "Asset index ready. Open a save file to start.";
+            return;
+        }
+        int missing = _weapons.Count(x => x.SpritePath == PlaceholderSprite) +
+                      _characters.Count(x => x.SpritePath == PlaceholderSprite) +
+                      _modules.Count(x => x.SpritePath == PlaceholderSprite);
+        StatsText.Text =
+            $"Weapons: {_weapons.Count} | Characters: {_characters.Count} | Modules: {_modules.Count} | Placeholder icons: {missing}";
+    }
+
+    private void RawApply_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _root = JsonNode.Parse(RawBox.Text)?.AsObject()
+                ?? throw new InvalidDataException("Raw JSON is empty.");
+            _wpnIds = _root["ag_inv_wpn_id"]?.AsArray();
+            _charIds = _root["ag_inv_char_id"]?.AsArray();
+            _modCounts = _root["ag_inv_modul_count"]?.AsArray();
+            if (_wpnIds == null || _charIds == null)
+                throw new InvalidDataException("ag_inv_wpn_id / ag_inv_char_id not found.");
+            RefreshAll();
+            RawReload();
+            Status("Applied raw JSON.");
+        }
+        catch (Exception ex)
+        {
+            Status("Error: " + ex.Message);
+        }
+    }
+
+    private void RawReload_Click(object sender, RoutedEventArgs e)
+    {
+        RawReload();
+    }
+
+    private void RawReload()
+    {
+        if (_root == null)
+        {
+            Status("Open a save file first.");
+            return;
+        }
+        RawBox.Text = _root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
     private void Status(string message) => StatusText.Text = message;

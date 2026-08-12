@@ -13,6 +13,8 @@
             <TextBox x:Name="SearchBox" Width="240" TextChanged="SearchBox_TextChanged"/>
         </StackPanel>
 
+        <TextBlock x:Name="StatsText" DockPanel.Dock="Top" Margin="0,0,0,6" Foreground="#555"/>
+
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
                 <TextBlock x:Name="StatusText" Text="Open a save file to start."/>
@@ -70,6 +72,19 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                </TabItem>
+                <TabItem Header="Raw JSON">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+                            <Button Content="Apply JSON" Width="100" Click="RawApply_Click"/>
+                            <Button Content="Reload" Width="80" Margin="8,0,0,0" Click="RawReload_Click"/>
+                        </StackPanel>
+                        <TextBox x:Name="RawBox" AcceptsReturn="True"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 FontFamily="Consolas" FontSize="12"
+                                 TextWrapping="NoWrap"/>
+                    </DockPanel>
                 </TabItem>
             </TabControl>
 
