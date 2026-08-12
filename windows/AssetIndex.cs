@@ -16,6 +16,7 @@ public sealed class ItemInfo
 public sealed class AssetIndex
 {
     private readonly Dictionary<(string, int, string), string> _names = new();
+    private readonly Dictionary<(string, int), string> _iconMap = new();
     private readonly Dictionary<string, string> _sprites = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _allSprites = new();
 
@@ -35,6 +36,20 @@ public sealed class AssetIndex
                 string display = e.GetProperty("display").GetString();
                 if (!string.IsNullOrEmpty(type) && !string.IsNullOrEmpty(lang) && display != null)
                     _names[(type, id, lang)] = display;
+            }
+        }
+
+        string iconMapJson = Path.Combine(basePath, "icon_map.json");
+        if (File.Exists(iconMapJson))
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(iconMapJson));
+            foreach (var e in doc.RootElement.EnumerateArray())
+            {
+                string type = e.GetProperty("item_type").GetString();
+                int id = e.GetProperty("item_id").GetInt32();
+                string file = e.TryGetProperty("sprite_file", out var sf) ? sf.GetString() : null;
+                if (!string.IsNullOrEmpty(type) && !string.IsNullOrEmpty(file))
+                    _iconMap[(type, id)] = file;
             }
         }
 
@@ -85,7 +100,9 @@ public sealed class AssetIndex
             Display = Name("weapon", id),
             Detail = $"type={Get(_wpnType, id)} damage={Get(_wpnDamage, id)} cost={Get(_wpnCost, id)}"
         };
-        info.SpriteFile = FindSprite(info.Icon, Get(_wpnType, id));
+        info.SpriteFile = _iconMap.TryGetValue(("weapon", id), out string iconFile)
+            ? iconFile
+            : FindSprite(info.Icon, Get(_wpnType, id));
         return info;
     }
 
@@ -99,7 +116,9 @@ public sealed class AssetIndex
             Display = Name("character", id),
             Detail = $"class={Get(_charClass, id)} hp={Get(_charHp, id)} cost={Get(_charCost, id)}"
         };
-        info.SpriteFile = FindSprite(info.Icon, null);
+        info.SpriteFile = _iconMap.TryGetValue(("character", id), out string iconFile)
+            ? iconFile
+            : FindSprite(info.Icon, null);
         return info;
     }
 
