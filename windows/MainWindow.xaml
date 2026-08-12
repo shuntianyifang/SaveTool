@@ -56,6 +56,21 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </TabItem>
+                <TabItem Header="Modules">
+                    <ListBox x:Name="ModuleList" SelectionChanged="ModuleList_SelectionChanged">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{Binding SpritePath}" Width="32" Height="32" Margin="0,0,8,0"/>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Display}" FontWeight="Bold"/>
+                                        <TextBlock Text="{Binding Detail}" Foreground="Gray" FontSize="11"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </TabItem>
             </TabControl>
 
             <GroupBox Grid.Column="1" Header="Item Detail" Margin="10,0,0,0">

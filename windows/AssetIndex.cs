@@ -78,6 +78,27 @@ public sealed class AssetIndex
         _charClass = LoadStringArray(Path.Combine(basePath, "il2cpp_dump", "CharData.json"), "char_class");
         _charHp = LoadIntArray(Path.Combine(basePath, "il2cpp_dump", "CharData.json"), "char_hp");
         _charCost = LoadIntArray(Path.Combine(basePath, "il2cpp_dump", "CharData.json"), "char_cost");
+
+        var modList = new List<string>();
+        string modJson = Path.Combine(basePath, "il2cpp_dump_recursive", "ModulData.json");
+        if (File.Exists(modJson))
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(modJson));
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (prop.Value.ValueKind != JsonValueKind.Array)
+                    continue;
+                foreach (var item in prop.Value.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.Object &&
+                        item.TryGetProperty("prefix", out var p) &&
+                        p.ValueKind == JsonValueKind.String)
+                        modList.Add(p.GetString());
+                }
+                break;
+            }
+        }
+        _modPrefix = modList.ToArray();
     }
 
     private readonly string[] _wpnPrefix;
@@ -89,6 +110,7 @@ public sealed class AssetIndex
     private readonly string[] _charClass;
     private readonly int[] _charHp;
     private readonly int[] _charCost;
+    private readonly string[] _modPrefix;
 
     public ItemInfo Weapon(int id)
     {
@@ -117,6 +139,22 @@ public sealed class AssetIndex
             Detail = $"class={Get(_charClass, id)} hp={Get(_charHp, id)} cost={Get(_charCost, id)}"
         };
         info.SpriteFile = _iconMap.TryGetValue(("character", id), out string iconFile)
+            ? iconFile
+            : FindSprite(info.Icon, null);
+        return info;
+    }
+
+    public ItemInfo Module(int id)
+    {
+        var info = new ItemInfo
+        {
+            Id = id,
+            Internal = Get(_modPrefix, id),
+            Icon = Get(_modPrefix, id),
+            Display = Name("module", id),
+            Detail = "module"
+        };
+        info.SpriteFile = _iconMap.TryGetValue(("module", id), out string iconFile)
             ? iconFile
             : FindSprite(info.Icon, null);
         return info;

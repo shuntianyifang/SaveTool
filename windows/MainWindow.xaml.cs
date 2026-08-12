@@ -14,6 +14,8 @@ public partial class MainWindow : Window
     private JsonArray _charIds;
     private List<ItemEntry> _weapons = new();
     private List<ItemEntry> _characters = new();
+    private List<ItemEntry> _modules = new();
+    private JsonArray _modCounts;
     private string _currentPath;
 
     public MainWindow()
@@ -45,6 +47,7 @@ public partial class MainWindow : Window
                 ?? throw new InvalidDataException("Save JSON is empty.");
             _wpnIds = _root["ag_inv_wpn_id"]?.AsArray();
             _charIds = _root["ag_inv_char_id"]?.AsArray();
+            _modCounts = _root["ag_inv_modul_count"]?.AsArray();
             if (_wpnIds == null || _charIds == null)
                 throw new InvalidDataException("ag_inv_wpn_id / ag_inv_char_id not found.");
             _currentPath = dlg.FileName;
@@ -61,8 +64,10 @@ public partial class MainWindow : Window
     {
         _weapons = BuildEntries(_wpnIds, _index.Weapon, "weapon");
         _characters = BuildEntries(_charIds, _index.Character, "character");
+        _modules = BuildModuleEntries();
         RefreshWeapons();
         RefreshCharacters();
+        RefreshModules();
     }
 
     private void RefreshWeapons()
@@ -81,6 +86,39 @@ public partial class MainWindow : Window
             x.Display.ToLowerInvariant().Contains(q) ||
             (x.Internal ?? "").ToLowerInvariant().Contains(q)).ToList();
         CharacterList.ItemsSource = list;
+    }
+
+    private void RefreshModules()
+    {
+        string q = SearchBox.Text?.Trim().ToLowerInvariant();
+        var list = _modules.Where(x => string.IsNullOrEmpty(q) ||
+            x.Display.ToLowerInvariant().Contains(q) ||
+            (x.Internal ?? "").ToLowerInvariant().Contains(q)).ToList();
+        ModuleList.ItemsSource = list;
+    }
+
+    private List<ItemEntry> BuildModuleEntries()
+    {
+        var result = new List<ItemEntry>();
+        if (_modCounts == null) return result;
+        for (int i = 0; i < _modCounts.Count; i++)
+        {
+            int count = _modCounts[i]?.GetValue<int>() ?? 0;
+            if (count <= 0) continue;
+            var info = _index.Module(i);
+            result.Add(new ItemEntry
+            {
+                Slot = i,
+                Id = i,
+                Count = count,
+                Kind = "module",
+                Internal = info.Internal,
+                Display = string.IsNullOrEmpty(info.Display) ? info.Internal : info.Display,
+                Detail = "count=" + count,
+                SpritePath = File.Exists(info.SpriteFile) ? info.SpriteFile : null
+            });
+        }
+        return result;
     }
 
     private static List<ItemEntry> BuildEntries(JsonArray ids, Func<int, ItemInfo> resolver, string kind)
@@ -117,12 +155,23 @@ public partial class MainWindow : Window
             ShowDetail(entry);
     }
 
+    private void ModuleList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (ModuleList.SelectedItem is ItemEntry entry)
+            ShowDetail(entry);
+    }
+
     private void ShowDetail(ItemEntry entry)
     {
         SlotBox.Text = entry.Slot.ToString();
         IdBox.Text = entry.Id.ToString();
         NameBox.Text = entry.Internal;
         NewIdBox.Text = entry.Id.ToString();
+        if (entry.Kind == "module")
+        {
+            SlotBox.Text = "Module ID: " + entry.Slot;
+            NewIdBox.Text = entry.Count.ToString();
+        }
         PreviewImage.Source = string.IsNullOrEmpty(entry.SpritePath)
             ? null
             : new System.Windows.Media.Imaging.BitmapImage(new Uri(entry.SpritePath));
@@ -130,20 +179,30 @@ public partial class MainWindow : Window
 
     private void ApplyButton_Click(object sender, RoutedEventArgs e)
     {
-        if (WeaponList.SelectedItem is not ItemEntry wep && CharacterList.SelectedItem is not ItemEntry ch)
+        if (WeaponList.SelectedItem is not ItemEntry wep &&
+            CharacterList.SelectedItem is not ItemEntry ch &&
+            ModuleList.SelectedItem is not ItemEntry mod)
         {
             Status("Select an item first.");
             return;
         }
-        ItemEntry entry = WeaponList.SelectedItem as ItemEntry ?? CharacterList.SelectedItem as ItemEntry;
+        ItemEntry entry = WeaponList.SelectedItem as ItemEntry ??
+                          CharacterList.SelectedItem as ItemEntry ??
+                          ModuleList.SelectedItem as ItemEntry;
         if (!int.TryParse(NewIdBox.Text, out int newId) || newId < 0)
         {
             Status("Invalid ID.");
             return;
         }
-        JsonArray arr = entry.Kind == "weapon" ? _wpnIds : _charIds;
+        JsonArray arr = entry.Kind == "weapon" ? _wpnIds :
+                        entry.Kind == "character" ? _charIds : _modCounts;
         arr[entry.Slot] = JsonValue.Create(newId);
         entry.Id = newId;
+        if (entry.Kind == "module")
+        {
+            entry.Count = newId;
+            entry.Detail = "count=" + newId;
+        }
         RefreshAll();
         Status($"Slot {entry.Slot} -> ID {newId}");
     }
@@ -198,4 +257,5 @@ public sealed class ItemEntry
     public string Display { get; set; }
     public string Detail { get; set; }
     public string SpritePath { get; set; }
+    public int Count { get; set; }
 }
