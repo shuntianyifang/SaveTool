@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private List<ItemEntry> _characters = new();
     private List<ItemEntry> _modules = new();
     private JsonArray _modCounts;
+    private readonly JsonArray[] _wpnMods = new JsonArray[13];
     private string _currentPath;
 
     public MainWindow()
@@ -50,6 +51,8 @@ public partial class MainWindow : Window
             _wpnIds = _root["ag_inv_wpn_id"]?.AsArray();
             _charIds = _root["ag_inv_char_id"]?.AsArray();
             _modCounts = _root["ag_inv_modul_count"]?.AsArray();
+            for (int n = 0; n < _wpnMods.Length; n++)
+                _wpnMods[n] = _root["ag_inv_wpn_mod_" + (n + 1)]?.AsArray();
             if (_wpnIds == null || _charIds == null)
                 throw new InvalidDataException("ag_inv_wpn_id / ag_inv_char_id not found.");
             _currentPath = dlg.FileName;
@@ -65,7 +68,7 @@ public partial class MainWindow : Window
 
     private void RefreshAll()
     {
-        _weapons = BuildEntries(_wpnIds, _index.Weapon, "weapon");
+        _weapons = BuildWeaponEntries();
         _characters = BuildEntries(_charIds, _index.Character, "character");
         _modules = BuildModuleEntries();
         RefreshWeapons();
@@ -120,6 +123,35 @@ public partial class MainWindow : Window
                 Display = string.IsNullOrEmpty(info.Display) ? info.Internal : info.Display,
                 Detail = "count=" + count,
                 SpritePath = ResolveSprite(info.SpriteFile)
+            });
+        }
+        return result;
+    }
+
+    private List<ItemEntry> BuildWeaponEntries()
+    {
+        var result = new List<ItemEntry>();
+        if (_wpnIds == null) return result;
+        for (int i = 0; i < _wpnIds.Count; i++)
+        {
+            int id = _wpnIds[i]?.GetValue<int>() ?? 0;
+            var info = _index.Weapon(id);
+            int[] mods = new int[13];
+            for (int n = 0; n < _wpnMods.Length; n++)
+            {
+                if (_wpnMods[n] != null && i < _wpnMods[n].Count)
+                    mods[n] = _wpnMods[n][i]?.GetValue<int>() ?? 0;
+            }
+            string sprite = _index.CompositeWeaponSprite(id, mods, info.SpriteFile);
+            result.Add(new ItemEntry
+            {
+                Slot = i,
+                Id = id,
+                Kind = "weapon",
+                Internal = info.Internal,
+                Display = string.IsNullOrEmpty(info.Display) ? info.Internal : info.Display,
+                Detail = info.Detail,
+                SpritePath = ResolveSprite(sprite ?? info.SpriteFile)
             });
         }
         return result;
@@ -280,6 +312,8 @@ public partial class MainWindow : Window
             _wpnIds = _root["ag_inv_wpn_id"]?.AsArray();
             _charIds = _root["ag_inv_char_id"]?.AsArray();
             _modCounts = _root["ag_inv_modul_count"]?.AsArray();
+            for (int n = 0; n < _wpnMods.Length; n++)
+                _wpnMods[n] = _root["ag_inv_wpn_mod_" + (n + 1)]?.AsArray();
             if (_wpnIds == null || _charIds == null)
                 throw new InvalidDataException("ag_inv_wpn_id / ag_inv_char_id not found.");
             RefreshAll();

@@ -1,5 +1,8 @@
 using System.Text.Json;
 using System.IO;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace PowSaveEditor;
 
@@ -19,11 +22,16 @@ public sealed class AssetIndex
     private readonly Dictionary<(string, int), string> _iconMap = new();
     private readonly Dictionary<string, string> _sprites = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _allSprites = new();
+    private readonly Dictionary<string, string> _compositeCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string _basePath;
+    private readonly string[] _modResourcePrefix;
+    private readonly float[][][] _wpnModPositions;
 
     public string CurrentLanguage { get; set; } = "en";
 
     public AssetIndex(string basePath)
     {
+        _basePath = basePath;
         string namesJson = Path.Combine(basePath, "item_names.json");
         if (File.Exists(namesJson))
         {
@@ -99,6 +107,8 @@ public sealed class AssetIndex
             }
         }
         _modPrefix = modList.ToArray();
+        _modResourcePrefix = LoadModuleResourcePrefixes(basePath);
+        _wpnModPositions = LoadWpnModPositions(basePath);
     }
 
     private readonly string[] _wpnPrefix;
@@ -158,6 +168,63 @@ public sealed class AssetIndex
             ? iconFile
             : FindSprite(info.Icon, null);
         return info;
+    }
+
+    public string CompositeWeaponSprite(int weaponId, int[] mods, string baseFile)
+    {
+        if (string.IsNullOrEmpty(baseFile) || !File.Exists(baseFile))
+            return null;
+
+        string key = weaponId + ":" + string.Join(",", mods);
+        if (_compositeCache.TryGetValue(key, out string cached))
+            return cached;
+
+        try
+        {
+            const int canvasW = 300;
+            const int canvasH = 120;
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                var baseImage = new BitmapImage(new Uri(baseFile));
+                double bx = (canvasW - baseImage.PixelWidth) / 2d;
+                double by = (canvasH - baseImage.PixelHeight) / 2d;
+                dc.DrawImage(baseImage, new Rect(bx, by, baseImage.PixelWidth, baseImage.PixelHeight));
+
+                for (int slot = 0; slot < mods.Length && slot < 13; slot++)
+                {
+                    int modId = mods[slot];
+                    if (modId <= 0) continue;
+                    float[] pos = GetWeaponModPosition(weaponId, slot + 1);
+                    if (pos == null) continue;
+                    string spriteFile = GetModuleSpriteFile(modId);
+                    if (string.IsNullOrEmpty(spriteFile) || !File.Exists(spriteFile)) continue;
+
+                    var modImage = new BitmapImage(new Uri(spriteFile));
+                    double x = canvasW / 2d + pos[0] - modImage.PixelWidth / 2d;
+                    double y = canvasH / 2d - pos[1] - modImage.PixelHeight / 2d;
+                    dc.DrawImage(modImage, new Rect(x, y, modImage.PixelWidth, modImage.PixelHeight));
+                }
+            }
+
+            var bitmap = new RenderTargetBitmap(canvasW, canvasH, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+
+            string dir = Path.Combine(_basePath, "sprites", "composite");
+            Directory.CreateDirectory(dir);
+            string sig = string.Join("_", mods);
+            string file = Path.Combine(dir, "wpn_" + weaponId + "_" + sig + ".png");
+            using var stream = File.Create(file);
+            encoder.Save(stream);
+            _compositeCache[key] = file;
+            return file;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public string Name(string type, int id)
@@ -220,6 +287,83 @@ public sealed class AssetIndex
         foreach (var e in items.EnumerateArray())
             list.Add(e.ValueKind == JsonValueKind.Number ? e.GetInt32() : 0);
         return list.ToArray();
+    }
+
+    private static string[] LoadModuleResourcePrefixes(string basePath)
+    {
+        string path = Path.Combine(basePath, "il2cpp_dump_recursive", "ModulData_resolved.json");
+        if (!File.Exists(path))
+            path = Path.Combine(basePath, "il2cpp_dump_recursive", "ModulData.json");
+        if (!File.Exists(path)) return Array.Empty<string>();
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var root = doc.RootElement;
+        foreach (var prop in root.EnumerateObject())
+        {
+            if (prop.Value.ValueKind != JsonValueKind.Array) continue;
+            var list = new List<string>();
+            foreach (var item in prop.Value.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.Object &&
+                    item.TryGetProperty("prefix", out var p) &&
+                    p.ValueKind == JsonValueKind.String)
+                    list.Add(p.GetString());
+                else
+                    list.Add(null);
+            }
+            return list.ToArray();
+        }
+        return Array.Empty<string>();
+    }
+
+    private static float[][][] LoadWpnModPositions(string basePath)
+    {
+        string path = Path.Combine(basePath, "il2cpp_dump", "WpnData.json");
+        var result = new float[300][][];
+        if (!File.Exists(path)) return result;
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        for (int n = 1; n <= 13; n++)
+        {
+            string key = "ag_inv_wpn_modul_pos_ui_id_" + n;
+            if (!doc.RootElement.TryGetProperty(key, out JsonElement el) ||
+                !el.TryGetProperty("items", out JsonElement items))
+                continue;
+            int wid = 0;
+            foreach (var e in items.EnumerateArray())
+            {
+                if (wid >= result.Length) break;
+                if (e.ValueKind == JsonValueKind.Array && e.GetArrayLength() >= 2)
+                {
+                    result[wid] ??= new float[13][];
+                    result[wid][n - 1] = new[]
+                    {
+                        e[0].GetSingle(),
+                        e[1].GetSingle()
+                    };
+                }
+                wid++;
+            }
+        }
+        return result;
+    }
+
+    private float[] GetWeaponModPosition(int weaponId, int slot)
+    {
+        if (weaponId < 0 || weaponId >= _wpnModPositions.Length) return null;
+        var row = _wpnModPositions[weaponId];
+        if (row == null || slot < 1 || slot > 13) return null;
+        return row[slot - 1];
+    }
+
+    private string GetModuleSpriteFile(int modId)
+    {
+        if (_iconMap.TryGetValue(("module", modId), out string file))
+            return file;
+        if (modId >= 0 && modId < _modResourcePrefix.Length &&
+            !string.IsNullOrEmpty(_modResourcePrefix[modId]))
+            return FindSprite(_modResourcePrefix[modId], null);
+        return null;
     }
 
     private static string Get(string[] arr, int i)

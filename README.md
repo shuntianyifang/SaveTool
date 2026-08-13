@@ -21,7 +21,7 @@ dotnet build windows/PowSaveEditor.csproj -c Release
 功能：
 
 - 打开并解密 `save_file` 加密存档
-- 武器 / 角色列表，显示本地化名称和图标
+- 武器 / 角色列表，显示本地化名称和图标；武器图标按存档中的配件实时合成渲染
 - 搜索、语言切换、ID 编辑
 - 保存时重新加密并生成 HMAC，自动备份原文件
 
