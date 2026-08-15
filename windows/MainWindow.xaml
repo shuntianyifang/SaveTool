@@ -89,18 +89,29 @@
             </TabControl>
 
             <GroupBox Grid.Column="1" Header="Item Detail" Margin="10,0,0,0">
-                <StackPanel>
-                    <TextBlock Text="Slot:"/>
-                    <TextBox x:Name="SlotBox" IsReadOnly="True"/>
-                    <TextBlock Text="Current ID:"/>
-                    <TextBox x:Name="IdBox" IsReadOnly="True"/>
-                    <TextBlock Text="Internal Name:"/>
-                    <TextBox x:Name="NameBox" IsReadOnly="True"/>
-                    <TextBlock Text="New ID (0 = clear):"/>
-                    <TextBox x:Name="NewIdBox"/>
-                    <Button x:Name="ApplyButton" Content="Apply ID" Margin="0,8,0,0" Click="ApplyButton_Click"/>
-                    <Image x:Name="PreviewImage" Width="96" Height="96" Margin="0,12,0,0" Stretch="Uniform"/>
-                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="Slot:"/>
+                        <TextBox x:Name="SlotBox" IsReadOnly="True"/>
+                        <TextBlock Text="Current ID:"/>
+                        <TextBox x:Name="IdBox" IsReadOnly="True"/>
+                        <TextBlock Text="Internal Name:"/>
+                        <TextBox x:Name="NameBox" IsReadOnly="True"/>
+                        <TextBlock Text="New ID (0 = clear):"/>
+                        <TextBox x:Name="NewIdBox"/>
+                        <Button x:Name="ApplyButton" Content="Apply ID" Margin="0,8,0,0" Click="ApplyButton_Click"/>
+
+                        <TextBlock Text="Module Slots (ag_inv_wpn_mod_1..13):" Margin="0,14,0,4" FontWeight="Bold"/>
+                        <StackPanel x:Name="ModSlotsPanel"/>
+                        <Button x:Name="ResetModsButton" Content="Reset to weapon defaults"
+                                Margin="0,6,0,0" IsEnabled="False" Click="ResetModsButton_Click"/>
+                        <TextBlock x:Name="ModWarningText" Foreground="DarkOrange"
+                                   TextWrapping="Wrap" Margin="0,6,0,0"/>
+
+                        <Image x:Name="PreviewImage" Width="180" Height="100" Margin="0,12,0,0"
+                               Stretch="Uniform" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </ScrollViewer>
             </GroupBox>
         </Grid>
     </DockPanel>

@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
 
 namespace PowSaveEditor;
@@ -19,6 +20,10 @@ public partial class MainWindow : Window
     private JsonArray _modCounts;
     private readonly JsonArray[] _wpnMods = new JsonArray[13];
     private string _currentPath;
+    private int _selectedWeaponSlot = -1;
+    private bool _suppressModEvents;
+    private TextBox[] _modBoxes = new TextBox[13];
+    private TextBlock[] _modNameTexts = new TextBlock[13];
 
     public MainWindow()
     {
@@ -68,6 +73,7 @@ public partial class MainWindow : Window
 
     private void RefreshAll()
     {
+        ClearModuleSlots();
         _weapons = BuildWeaponEntries();
         _characters = BuildEntries(_charIds, _index.Character, "character");
         _modules = BuildModuleEntries();
@@ -143,6 +149,10 @@ public partial class MainWindow : Window
                     mods[n] = _wpnMods[n][i]?.GetValue<int>() ?? 0;
             }
             string sprite = _index.CompositeWeaponSprite(id, mods, info.SpriteFile);
+            List<int> missing = _index.MissingModuleSprites(mods);
+            string detail = info.Detail + (missing.Count > 0
+                ? " | fallback:" + string.Join(",", missing)
+                : string.Empty);
             result.Add(new ItemEntry
             {
                 Slot = i,
@@ -150,7 +160,7 @@ public partial class MainWindow : Window
                 Kind = "weapon",
                 Internal = info.Internal,
                 Display = string.IsNullOrEmpty(info.Display) ? info.Internal : info.Display,
-                Detail = info.Detail,
+                Detail = detail,
                 SpritePath = ResolveSprite(sprite ?? info.SpriteFile)
             });
         }
@@ -218,6 +228,183 @@ public partial class MainWindow : Window
         PreviewImage.Source = string.IsNullOrEmpty(entry.SpritePath)
             ? null
             : new System.Windows.Media.Imaging.BitmapImage(new Uri(entry.SpritePath));
+        if (entry.Kind == "weapon")
+        {
+            RefreshModuleSlots(entry);
+            UpdateModWarning(entry, ReadMods(entry.Slot));
+        }
+        else
+        {
+            ClearModuleSlots();
+        }
+    }
+
+    private int[] ReadMods(int weaponSlot)
+    {
+        var mods = new int[13];
+        for (int n = 0; n < mods.Length; n++)
+            mods[n] = GetMod(weaponSlot, n);
+        return mods;
+    }
+
+    private int GetMod(int weaponSlot, int slotIndex)
+    {
+        if (_wpnMods[slotIndex] == null || weaponSlot >= _wpnMods[slotIndex].Count)
+            return 0;
+        return _wpnMods[slotIndex][weaponSlot]?.GetValue<int>() ?? 0;
+    }
+
+    private void ClearModuleSlots()
+    {
+        _selectedWeaponSlot = -1;
+        ModSlotsPanel.Children.Clear();
+        ModWarningText.Text = string.Empty;
+        ResetModsButton.IsEnabled = false;
+    }
+
+    private void RefreshModuleSlots(ItemEntry entry)
+    {
+        ModSlotsPanel.Children.Clear();
+        _selectedWeaponSlot = entry.Slot;
+        _modBoxes = new TextBox[13];
+        _modNameTexts = new TextBlock[13];
+        ResetModsButton.IsEnabled = true;
+
+        for (int n = 0; n < 13; n++)
+        {
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 2, 0, 2)
+            };
+            row.Children.Add(new TextBlock
+            {
+                Text = "Slot " + (n + 1),
+                Width = 46,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            var box = new TextBox { Width = 72, Tag = n, VerticalContentAlignment = VerticalAlignment.Center };
+            box.TextChanged += ModSlotBox_TextChanged;
+            var name = new TextBlock
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0),
+                Text = string.Empty
+            };
+            _modBoxes[n] = box;
+            _modNameTexts[n] = name;
+            row.Children.Add(box);
+            row.Children.Add(name);
+            ModSlotsPanel.Children.Add(row);
+        }
+
+        _suppressModEvents = true;
+        try
+        {
+            for (int n = 0; n < 13; n++)
+                _modBoxes[n].Text = GetMod(entry.Slot, n).ToString();
+        }
+        finally
+        {
+            _suppressModEvents = false;
+        }
+        UpdateModNames(entry.Id);
+    }
+
+    private void UpdateModNames(int weaponId)
+    {
+        for (int n = 0; n < 13; n++)
+        {
+            int modId = GetMod(_selectedWeaponSlot, n);
+            string prefix = modId > 0 ? _index.GetModulePrefix(modId) : null;
+            _modNameTexts[n].Text = string.IsNullOrEmpty(prefix) ? "(none)" : prefix;
+        }
+    }
+
+    private void ModSlotBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressModEvents || _selectedWeaponSlot < 0) return;
+        if (sender is not TextBox box || box.Tag is not int slotIndex) return;
+
+        if (!int.TryParse(box.Text, out int modId) || modId < 0 || modId >= _index.ModuleCount)
+        {
+            UpdateModNames(_weapons.FirstOrDefault(w => w.Slot == _selectedWeaponSlot)?.Id ?? 0);
+            Status("Module ID must be 0.." + (_index.ModuleCount - 1));
+            return;
+        }
+
+        if (_wpnMods[slotIndex] == null)
+        {
+            _wpnMods[slotIndex] = new JsonArray();
+            _root["ag_inv_wpn_mod_" + (slotIndex + 1)] = _wpnMods[slotIndex];
+        }
+        if (_selectedWeaponSlot < _wpnMods[slotIndex].Count)
+            _wpnMods[slotIndex][_selectedWeaponSlot] = JsonValue.Create(modId);
+        else
+            _wpnMods[slotIndex].Add(JsonValue.Create(modId));
+
+        var entry = _weapons.FirstOrDefault(w => w.Slot == _selectedWeaponSlot);
+        if (entry != null)
+        {
+            UpdateModNames(entry.Id);
+            RebuildSelectedWeaponPreview(entry);
+        }
+    }
+
+    private void RebuildSelectedWeaponPreview(ItemEntry entry)
+    {
+        int[] mods = ReadMods(entry.Slot);
+        var info = _index.Weapon(entry.Id);
+        string sprite = _index.CompositeWeaponSprite(entry.Id, mods, info.SpriteFile);
+        entry.SpritePath = ResolveSprite(sprite ?? info.SpriteFile);
+        PreviewImage.Source = string.IsNullOrEmpty(entry.SpritePath)
+            ? null
+            : new System.Windows.Media.Imaging.BitmapImage(new Uri(entry.SpritePath));
+        WeaponList.Items.Refresh();
+        UpdateModWarning(entry, mods);
+    }
+
+    private void UpdateModWarning(ItemEntry entry, int[] mods)
+    {
+        List<int> missing = _index.MissingModuleSprites(mods);
+        ModWarningText.Text = missing.Count == 0
+            ? string.Empty
+            : "Fallback sprites (module " + string.Join(", ", missing) + ")";
+    }
+
+    private void ResetModsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedWeaponSlot < 0) return;
+        var entry = _weapons.FirstOrDefault(w => w.Slot == _selectedWeaponSlot);
+        if (entry == null) return;
+
+        int[] defaults = _index.GetDefaultModules(entry.Id);
+        if (defaults.Length < 13) return;
+
+        _suppressModEvents = true;
+        try
+        {
+            for (int n = 0; n < 13; n++)
+            {
+                if (_wpnMods[n] == null)
+                {
+                    _wpnMods[n] = new JsonArray();
+                    _root["ag_inv_wpn_mod_" + (n + 1)] = _wpnMods[n];
+                }
+                while (_wpnMods[n].Count <= _selectedWeaponSlot)
+                    _wpnMods[n].Add(JsonValue.Create(0));
+                _wpnMods[n][_selectedWeaponSlot] = JsonValue.Create(defaults[n]);
+                _modBoxes[n].Text = defaults[n].ToString();
+            }
+        }
+        finally
+        {
+            _suppressModEvents = false;
+        }
+        UpdateModNames(entry.Id);
+        RebuildSelectedWeaponPreview(entry);
+        Status("Reset weapon " + entry.Internal + " to default modules.");
     }
 
     private void ApplyButton_Click(object sender, RoutedEventArgs e)
