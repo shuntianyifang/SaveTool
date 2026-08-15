@@ -20,6 +20,7 @@ public sealed class AssetIndex
 {
     private readonly Dictionary<(string, int, string), string> _names = new();
     private readonly Dictionary<(string, int), string> _iconMap = new();
+    private readonly Dictionary<int, string> _moduleL2dSprites = new();
     private readonly Dictionary<string, string> _sprites = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _allSprites = new();
     private readonly Dictionary<string, string> _compositeCache = new(StringComparer.OrdinalIgnoreCase);
@@ -65,6 +66,22 @@ public sealed class AssetIndex
                 if (!string.IsNullOrEmpty(type) && !string.IsNullOrEmpty(file))
                     _iconMap[(type, id)] = file;
                 if (type == "module" && !string.IsNullOrEmpty(status))
+                    _moduleStatus[id] = status;
+            }
+        }
+
+        string l2dJson = Path.Combine(basePath, "icon_map_l2d.json");
+        if (File.Exists(l2dJson))
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(l2dJson));
+            foreach (var e in doc.RootElement.EnumerateArray())
+            {
+                int id = e.GetProperty("item_id").GetInt32();
+                string file = e.TryGetProperty("sprite_file", out var sf) ? sf.GetString() : null;
+                string status = e.TryGetProperty("status", out var st) ? st.GetString() : null;
+                if (!string.IsNullOrEmpty(file))
+                    _moduleL2dSprites[id] = file;
+                if (!string.IsNullOrEmpty(status))
                     _moduleStatus[id] = status;
             }
         }
@@ -467,6 +484,8 @@ public sealed class AssetIndex
 
     public string GetModuleSpriteFile(int modId)
     {
+        if (_moduleL2dSprites.TryGetValue(modId, out string l2d))
+            return l2d;
         if (_iconMap.TryGetValue(("module", modId), out string file))
             return file;
         if (modId >= 0 && modId < _modResourcePrefix.Length &&

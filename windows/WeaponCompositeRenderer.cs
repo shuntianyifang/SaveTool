@@ -13,9 +13,10 @@ public sealed class CompositeRenderResult
 
 public static class WeaponCompositeRenderer
 {
-    // Order matches AG_Func.Spawn_Ico_WPN_v3: slot 6 first, then body,
-    // then 12, 11, 4, 2, 9, 7, 8, 10, 3, 5, 13. Slot 1 is not drawn by the game.
-    private static readonly int[] ModuleDrawOrder = { 6, 12, 11, 4, 2, 9, 7, 8, 10, 3, 5, 13 };
+    // Order follows AG_Func.Spawn_Ico_WPN_v3: slot 6 first, then body,
+    // then 12, 11, 4, 2, 9, 7, 8, 10, 3, 5, 13. Slot 1 is drawn last so the
+    // magazine/ammo overlay lands on top, matching the in-game icon.
+    private static readonly int[] ModuleDrawOrder = { 6, 12, 11, 4, 2, 9, 7, 8, 10, 3, 5, 13, 1 };
 
     private static readonly BitmapSource TransparentPixel = CreateTransparentPixel();
 
@@ -28,7 +29,10 @@ public static class WeaponCompositeRenderer
         string dir = Path.Combine(index.BasePath, "sprites", "composite");
         Directory.CreateDirectory(dir);
         string sig = string.Join("_", mods ?? Array.Empty<int>());
-        string file = Path.Combine(dir, "wpn_" + weaponId + "_" + sig + ".png");
+        string modeTag = string.Equals(mode, "item", StringComparison.OrdinalIgnoreCase)
+            ? "_item"
+            : string.Empty;
+        string file = Path.Combine(dir, "wpn_" + weaponId + modeTag + "_" + sig + ".png");
 
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(result.Bitmap));
