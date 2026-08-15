@@ -6,28 +6,21 @@ Pawns of War 存档解包 / 回包工具，支持直接读取、修改和重新�
 
 | 目录 | 版本 | 说明 |
 |---|---|---|
-| `windows/` | Windows WPF 可视版 | 当前推荐版本，带物品名、图标、搜索和存档回写 |
-| `web/` | 离线 HTML 版 | 浏览器直接打开，跨平台 |
-| `archive/legacy-windows-v1.0.0/` | 旧 CLI 版 | 已归档的无界面控制台版 |
+| `windows/` | Windows WPF 可视版 | 当前推荐版本，见 [windows/README.md](windows/README.md) |
+| `web/` | 离线 HTML 版 | 浏览器直接打开，跨平台，见 [web/README.md](web/README.md) |
+| `archive/legacy-windows-v1.0.0/` | 旧 CLI 版 | 已归档的无界面控制台版，见 [ARCHIVE_NOTES.md](archive/legacy-windows-v1.0.0/ARCHIVE_NOTES.md) |
 
 ## Windows 可视版
 
-源码在 [windows/](windows/)，项目文件为 `PowSaveEditor.csproj`。
+源码在 [windows/](windows/)，项目文件为 `PowSaveEditor.csproj`，详细说明见 [windows/README.md](windows/README.md)。
 
 ```powershell
 dotnet build windows/PowSaveEditor.csproj -c Release
 ```
 
-功能：
-
-- 打开并解密 `save_file` 加密存档
-- 武器 / 角色列表，显示本地化名称和图标；武器图标按存档中的配件实时合成渲染
-- 搜索、语言切换、ID 编辑
-- 保存时重新加密并生成 HMAC，自动备份原文件
-
 ## 离线 HTML 版  
 
-见`/web/README.md`  
+见 [web/README.md](web/README.md)。  
 
 ## 存档格式
 

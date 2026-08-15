@@ -2,6 +2,8 @@
 
 一个网页文件，不联网、不安装、不上传，Win / Android / iOS 的现代浏览器都能用。
 
+返回 [主 README](../README.md)。
+
 ## 文件
 
 - `SaveTool.html` - 主程序，用浏览器打开即可
