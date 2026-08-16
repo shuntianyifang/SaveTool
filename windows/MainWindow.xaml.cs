@@ -85,29 +85,30 @@ public partial class MainWindow : Window
 
     private void RefreshWeapons()
     {
-        string q = SearchBox.Text?.Trim().ToLowerInvariant();
-        var list = _weapons.Where(x => string.IsNullOrEmpty(q) ||
-            x.Display.ToLowerInvariant().Contains(q) ||
-            (x.Internal ?? "").ToLowerInvariant().Contains(q)).ToList();
+        string q = SearchBox.Text?.Trim();
+        var list = _weapons.Where(x => MatchesSearch(x, q)).ToList();
         WeaponList.ItemsSource = list;
     }
 
     private void RefreshCharacters()
     {
-        string q = SearchBox.Text?.Trim().ToLowerInvariant();
-        var list = _characters.Where(x => string.IsNullOrEmpty(q) ||
-            x.Display.ToLowerInvariant().Contains(q) ||
-            (x.Internal ?? "").ToLowerInvariant().Contains(q)).ToList();
+        string q = SearchBox.Text?.Trim();
+        var list = _characters.Where(x => MatchesSearch(x, q)).ToList();
         CharacterList.ItemsSource = list;
     }
 
     private void RefreshModules()
     {
-        string q = SearchBox.Text?.Trim().ToLowerInvariant();
-        var list = _modules.Where(x => string.IsNullOrEmpty(q) ||
-            x.Display.ToLowerInvariant().Contains(q) ||
-            (x.Internal ?? "").ToLowerInvariant().Contains(q)).ToList();
+        string q = SearchBox.Text?.Trim();
+        var list = _modules.Where(x => MatchesSearch(x, q)).ToList();
         ModuleList.ItemsSource = list;
+    }
+
+    private static bool MatchesSearch(ItemEntry entry, string query)
+    {
+        if (string.IsNullOrEmpty(query)) return true;
+        return (entry.Display ?? string.Empty).Contains(query, StringComparison.OrdinalIgnoreCase) ||
+               (entry.Internal ?? string.Empty).Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 
     private List<ItemEntry> BuildModuleEntries()
@@ -125,7 +126,9 @@ public partial class MainWindow : Window
                 Count = count,
                 Kind = "module",
                 Internal = info.Internal,
-                Display = string.IsNullOrEmpty(info.Display) ? info.Internal : info.Display,
+                Display = string.IsNullOrEmpty(info.Display)
+                    ? (string.IsNullOrEmpty(info.Internal) ? "Module slot " + (i + 1) : info.Internal)
+                    : info.Display,
                 Detail = "count=" + count,
                 SpritePath = ResolveSprite(info.SpriteFile)
             });
