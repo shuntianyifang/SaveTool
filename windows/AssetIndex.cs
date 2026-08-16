@@ -132,6 +132,7 @@ public sealed class AssetIndex
             }
         }
         _modPrefix = modList.ToArray();
+        _moduleActive = LoadModuleActive(basePath);
         _modResourcePrefix = LoadModuleResourcePrefixes(basePath);
         _wpnModPositions = LoadWpnModPositions(basePath);
         _wpnItemModPositions = LoadWpnItemModPositions(basePath);
@@ -151,6 +152,7 @@ public sealed class AssetIndex
     private readonly int[] _charHp;
     private readonly int[] _charCost;
     private readonly string[] _modPrefix;
+    private readonly bool[] _moduleActive;
 
     public ItemInfo Weapon(int id)
     {
@@ -317,6 +319,34 @@ public sealed class AssetIndex
         return Array.Empty<string>();
     }
 
+    private static bool[] LoadModuleActive(string basePath)
+    {
+        string path = Path.Combine(basePath, "il2cpp_dump_recursive", "ModulData_resolved.json");
+        if (!File.Exists(path))
+            path = Path.Combine(basePath, "il2cpp_dump_recursive", "ModulData.json");
+        if (!File.Exists(path)) return Array.Empty<bool>();
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        foreach (var prop in doc.RootElement.EnumerateObject())
+        {
+            if (prop.Value.ValueKind != JsonValueKind.Array) continue;
+            var list = new List<bool>();
+            foreach (var item in prop.Value.EnumerateArray())
+            {
+                bool active = false;
+                if (item.ValueKind == JsonValueKind.Object &&
+                    item.TryGetProperty("active", out var a) &&
+                    a.ValueKind == JsonValueKind.True)
+                {
+                    active = true;
+                }
+                list.Add(active);
+            }
+            return list.ToArray();
+        }
+        return Array.Empty<bool>();
+    }
+
     private static float[][][] LoadWpnModPositions(string basePath)
     {
         string path = Path.Combine(basePath, "il2cpp_dump", "WpnData.json");
@@ -481,6 +511,11 @@ public sealed class AssetIndex
     }
 
     public int ModuleCount => _modPrefix?.Length ?? 0;
+
+    public bool IsModuleActive(int id)
+    {
+        return id >= 0 && id < _moduleActive.Length && _moduleActive[id];
+    }
 
     public string GetModuleSpriteFile(int modId)
     {

@@ -117,6 +117,7 @@ public partial class MainWindow : Window
         if (_modCounts == null) return result;
         for (int i = 0; i < _modCounts.Count; i++)
         {
+            if (!_index.IsModuleActive(i)) continue;
             int count = _modCounts[i]?.GetValue<int>() ?? 0;
             var info = _index.Module(i);
             result.Add(new ItemEntry
