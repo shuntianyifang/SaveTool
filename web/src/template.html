@@ -29,6 +29,8 @@ __CSS__
   </div>
 </header>
 <input type="file" id="fileInput" accept="*/*" hidden>
+<input type="file" id="compareFileInput" accept="*/*" hidden>
+<input type="file" id="loadoutFileInput" accept=".json,application/json" hidden>
 <div class="statusbar">
   <span id="status">请打开存档文件，或直接拖入窗口。</span>
   <span id="stats"></span>
@@ -38,6 +40,8 @@ __CSS__
   <button class="tab-btn" data-tab="characters">角色</button>
   <button class="tab-btn" data-tab="weapons">武器</button>
   <button class="tab-btn" data-tab="modules">模块</button>
+  <button class="tab-btn" data-tab="compare">对比</button>
+  <button class="tab-btn" data-tab="fields">其他</button>
   <button class="tab-btn" data-tab="raw">原始 JSON</button>
 </nav>
 <main>
@@ -75,13 +79,14 @@ __CSS__
         <option value="ko">한국어</option>
       </select>
       <select id="filterSelect" title="筛选"></select>
+      <select id="batchAction" title="批量操作" hidden></select>
       <input id="batchInput" type="number" min="0" step="1" value="0" title="批量设置数量" hidden>
       <span class="page-info" id="pageInfo"></span>
       <button data-action="prev-page">上一页</button>
       <button data-action="next-page">下一页</button>
       <button data-action="copy-row">复制到空槽</button>
       <button data-action="reset-mods" id="btnResetMods" hidden>恢复默认配件</button>
-      <button data-action="batch-set" id="btnBatchSet" hidden>批量设置数量</button>
+      <button data-action="batch-set" id="btnBatchSet" hidden>执行批量操作</button>
       <button data-action="clear-row" class="danger">清空所选</button>
     </div>
     <div class="table-wrap">
@@ -91,6 +96,82 @@ __CSS__
       </table>
     </div>
     <div id="detailPanel" class="detail-panel"></div>
+  </section>
+
+  <section id="panel-compare" class="panel">
+    <div class="toolbar">
+      <button id="btnLoadCompare">加载对比存档</button>
+      <button id="btnClearCompare" disabled>清除对比</button>
+      <span class="muted" id="compareName"></span>
+    </div>
+    <div class="cards">
+      <div class="stat-card"><span class="stat-num" id="cmpChars">0</span><span class="stat-label">角色差异</span></div>
+      <div class="stat-card"><span class="stat-num" id="cmpWeapons">0</span><span class="stat-label">武器差异</span></div>
+      <div class="stat-card"><span class="stat-num" id="cmpModules">0</span><span class="stat-label">模块差异</span></div>
+      <div class="stat-card"><span class="stat-num" id="cmpSettings">0</span><span class="stat-label">设置差异</span></div>
+    </div>
+    <div class="compare-tabs">
+      <button class="cmp-tab active" data-cmp="characters">角色差异</button>
+      <button class="cmp-tab" data-cmp="weapons">武器差异</button>
+      <button class="cmp-tab" data-cmp="modules">模块差异</button>
+    </div>
+    <div class="table-wrap compare-table"><table id="compareTable"><thead></thead><tbody></tbody></table></div>
+  </section>
+
+  <section id="panel-fields" class="panel">
+    <nav class="sub-tabs">
+      <button class="sub-tab active" data-fieldtab="cards">卡牌</button>
+      <button class="sub-tab" data-fieldtab="missions">任务/成就</button>
+      <button class="sub-tab" data-fieldtab="resources">资源/商店</button>
+      <button class="sub-tab" data-fieldtab="misc">编队/突袭</button>
+    </nav>
+    <div id="fields-cards" class="field-section">
+      <div class="toolbar">
+        <input id="cardSearch" type="search" placeholder="搜索卡牌名称 / ID">
+        <button data-action="apply-cards">应用卡牌修改</button>
+      </div>
+      <div class="table-wrap field-table"><table id="cardTable"><thead><tr><th>ID</th><th>名称</th><th>拥有</th><th>使用次数</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div id="fields-missions" class="field-section" hidden>
+      <div class="toolbar">
+        <select id="missionKey" title="数组字段"></select>
+        <input id="missionSearch" type="search" placeholder="搜索编号 / 名称 / 数值">
+        <input id="missionBatch" type="number" min="0" step="1" value="0" title="批量设置值">
+        <button data-action="mission-batch">批量设置</button>
+        <button data-action="apply-array">应用修改</button>
+      </div>
+      <div class="table-wrap field-table"><table id="missionTable"><thead><tr><th>编号</th><th>名称</th><th>值</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div id="fields-resources" class="field-section" hidden>
+      <div class="editor-card">
+        <h2>玩家数值</h2>
+        <div id="playerValuesForm" class="form-grid"></div>
+        <div class="detail-actions"><button data-action="apply-player-values">应用数值</button></div>
+      </div>
+      <div class="editor-card">
+        <h2>常用字段</h2>
+        <div id="resourceScalarForm" class="form-grid"></div>
+        <div class="detail-actions"><button data-action="apply-resource-scalars">应用字段</button></div>
+      </div>
+      <div class="editor-card">
+        <h2>每日商店</h2>
+        <div class="table-wrap field-table"><table id="shopTable"><thead><tr><th>槽</th><th>ID</th><th>已购买</th><th>最大购买</th><th>类型</th></tr></thead><tbody></tbody></table></div>
+        <div class="detail-actions"><button data-action="apply-shop">应用商店</button></div>
+      </div>
+    </div>
+    <div id="fields-misc" class="field-section" hidden>
+      <div class="toolbar">
+        <select id="miscKey" title="数组字段"></select>
+        <input id="miscSearch" type="search" placeholder="搜索编号 / 数值">
+        <button data-action="apply-array">应用修改</button>
+      </div>
+      <div class="table-wrap field-table"><table id="miscTable"><thead><tr><th>编号</th><th>值</th></tr></thead><tbody></tbody></table></div>
+      <div class="editor-card">
+        <h2>编队名称</h2>
+        <div id="formationNamesForm" class="form-grid"></div>
+        <div class="detail-actions"><button data-action="apply-formation-names">应用编队名称</button></div>
+      </div>
+    </div>
   </section>
 
   <section id="panel-raw" class="panel">

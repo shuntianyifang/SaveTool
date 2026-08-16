@@ -36,6 +36,14 @@ def build_data(assets_dir):
     mod_active_root = load_json(resolved_mod_path) if resolved_mod_path.exists() else mod_root
     item_names = load_json(assets_dir / "item_names.json")
 
+    name_types = ("weapon", "character", "module", "card", "mission", "achievement", "campaign", "patch")
+    max_ids = {kind: 0 for kind in name_types}
+    for entry in item_names:
+        item_type = entry.get("item_type")
+        item_id = entry.get("item_id")
+        if item_type in max_ids and isinstance(item_id, int):
+            max_ids[item_type] = max(max_ids[item_type], item_id)
+
     weapon_prefix = unwrap(wpn["wpn_prefix"])
     weapon_count = len(weapon_prefix)
 
@@ -81,6 +89,11 @@ def build_data(assets_dir):
             "weapon": _empty_names(weapon_count),
             "character": _empty_names(char_count),
             "module": _empty_names(module_count),
+            "card": _empty_names(max_ids["card"] + 1),
+            "mission": _empty_names(max_ids["mission"] + 1),
+            "achievement": _empty_names(max_ids["achievement"] + 1),
+            "campaign": _empty_names(max_ids["campaign"] + 1),
+            "patch": _empty_names(max_ids["patch"] + 1),
         },
     }
 
@@ -139,7 +152,7 @@ def build(assets_dir, write_data_file=True):
     print("characters:    {} entries".format(len(ch["prefix"])))
     print("modules:       {} entries".format(len(mod["prefix"])))
     print("names:         {} entries".format(
-        sum(len(web_data["names"][kind]["en"]) for kind in ("weapon", "character", "module"))
+        sum(len(web_data["names"][kind]["en"]) for kind in web_data["names"])
     ))
     print("web_data.json: {} bytes".format(len(data_json.encode("utf-8"))))
     print("SaveTool.html: {} bytes".format(out_html.stat().st_size))

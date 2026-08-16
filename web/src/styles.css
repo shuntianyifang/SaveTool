@@ -234,3 +234,46 @@ td.num { font-variant-numeric: tabular-nums; }
   .cards { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr; }
 }
+.sub-tabs, .compare-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.sub-tab, .cmp-tab {
+  border-radius: 999px;
+  background: #eef2f7;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 5px 12px;
+}
+.sub-tab.active, .cmp-tab.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.field-section .toolbar { margin-top: 12px; }
+.field-table table td input, .field-table table td select {
+  width: 110px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+.compare-table { margin-top: 10px; }
+.loadout-box {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.loadout-box .detail-actions { margin-top: 8px; }
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.preset-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preset-title { font-weight: 600; margin: 6px 0 2px; font-size: 12px; }
+#panel-compare .cards { padding-top: 0; }
+#cardTable .card-own, #cardTable .card-count { width: 90px; }
+#playerValuesForm input, #resourceScalarForm input, #formationNamesForm input { width: 100%; }

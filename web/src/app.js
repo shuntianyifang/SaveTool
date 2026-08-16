@@ -158,6 +158,75 @@ const OVERVIEW_FIELDS = [
   { key: "ag_battle_time", label: "战斗时间", type: "int" }
 ];
 
+const BATCH_ACTIONS = {
+  characters: [
+    ["id", "设置 ID"],
+    ["lvl", "设置等级"],
+    ["lock", "批量锁定"],
+    ["unlock", "批量解锁"],
+    ["clear", "清空筛选结果"]
+  ],
+  weapons: [
+    ["id", "设置 ID"],
+    ["lvl", "设置等级"],
+    ["lock", "批量锁定"],
+    ["unlock", "批量解锁"],
+    ["clear", "清空筛选结果"]
+  ],
+  modules: [
+    ["count", "设置数量"],
+    ["clear", "清空筛选结果"]
+  ]
+};
+
+const MISSION_KEYS = [
+  ["ag_player_compl_missions", "任务", "mission"],
+  ["ag_player_achive", "成就", "achievement"],
+  ["ag_player_open_campaigns", "战役", "campaign"],
+  ["ag_player_redemn_code", "兑换码", "patch"]
+];
+
+const MISC_KEYS = [
+  ["ag_formation_preset_num", "编队预设", ""],
+  ["ag_formation_live2d", "Live2D 编队", ""],
+  ["ag_raid_reload_maps", "突袭重载地图", ""],
+  ["ag_drop_count_char", "角色掉落计数", ""],
+  ["ag_drop_count_wpn", "武器掉落计数", ""],
+  ["ag_drop_count_modul", "模块掉落计数", ""]
+];
+
+const RESOURCE_SCALAR_FIELDS = [
+  { key: "ag_player_daily_activity", label: "每日活跃日期", type: "int" },
+  { key: "ag_player_daily_boss_day", label: "每日首领日期", type: "int" },
+  { key: "ag_player_daily_boss_id", label: "每日首领 ID", type: "int" },
+  { key: "ag_player_daily_shop", label: "商店日期", type: "int" },
+  { key: "ag_player_orange_day", label: "橙色计数日期", type: "int" },
+  { key: "ag_player_orange_count", label: "橙色计数", type: "int" },
+  { key: "ag_raid_status", label: "突袭状态", type: "int" },
+  { key: "ag_battle_raidid", label: "战斗突袭 ID", type: "int" },
+  { key: "ag_raid_count_points", label: "突袭点数", type: "int" }
+];
+
+const COMPARE_CHAR_KEYS = [
+  "ag_inv_char_id", "ag_inv_char_name", "ag_inv_char_class", "ag_inv_char_lvl",
+  "ag_inv_char_exp", "ag_inv_char_hp", "ag_inv_char_max_hp", "ag_inv_char_eva",
+  "ag_inv_char_first_weapon", "ag_inv_char_lock", "ag_inv_char_slot_head",
+  "ag_inv_char_slot_cloth", "ag_inv_char_slot_armor", "ag_inv_char_slot_special",
+  "ag_inv_char_slot_action", "ag_inv_char_num_formation", "ag_inv_char_kills",
+  "ag_inv_char_love", "ag_inv_char_need_exp", "ag_inv_char_usability", "ag_inv_char_weight"
+];
+
+const COMPARE_WEAPON_KEYS = [
+  "ag_inv_wpn_id", "ag_inv_wpn_to_char", "ag_inv_wpn_lock",
+  "ag_inv_wpn_slot_card_atack_1", "ag_inv_wpn_slot_card_atack_2",
+  "ag_inv_wpn_mod_1", "ag_inv_wpn_mod_2", "ag_inv_wpn_mod_3", "ag_inv_wpn_mod_4",
+  "ag_inv_wpn_mod_5", "ag_inv_wpn_mod_6", "ag_inv_wpn_mod_7", "ag_inv_wpn_mod_8",
+  "ag_inv_wpn_mod_9", "ag_inv_wpn_mod_10", "ag_inv_wpn_mod_11", "ag_inv_wpn_mod_12",
+  "ag_inv_wpn_mod_13", "ag_inv_wpn_lvl", "ag_inv_wpn_need_exp", "ag_inv_wpn_exp"
+];
+
+const PRESET_KEY = "pow_loadout_presets";
+
 let root = null;
 let originalBytes = null;
 let originalJson = "";
@@ -172,6 +241,12 @@ let currentLang = "zh";
 let searchText = "";
 let filter = DEFAULT_FILTER.characters;
 let page = 0;
+let compareRoot = null;
+let compareName = "";
+let compareKind = "characters";
+let fieldTab = "cards";
+let missionKey = "ag_player_compl_missions";
+let miscKey = "ag_formation_preset_num";
 
 const $ = (id) => document.getElementById(id);
 
@@ -187,6 +262,7 @@ const statsEl = $("stats");
 const searchInput = $("searchInput");
 const langSelect = $("langSelect");
 const filterSelect = $("filterSelect");
+const batchAction = $("batchAction");
 const batchInput = $("batchInput");
 const btnResetMods = $("btnResetMods");
 const btnBatchSet = $("btnBatchSet");
@@ -640,13 +716,18 @@ function renderListToolbar() {
   filterSelect.innerHTML = FILTERS[listKind].map(([v, label]) =>
     `<option value="${v}" ${v === filter ? "selected" : ""}>${label}</option>`
   ).join("");
+  batchAction.innerHTML = BATCH_ACTIONS[listKind].map(([v, label]) =>
+    `<option value="${v}">${label}</option>`
+  ).join("");
+  batchAction.hidden = false;
   $("listTitle").textContent = listKind === "characters" ? "角色" : listKind === "weapons" ? "武器" : "模块";
   btnResetMods.hidden = listKind !== "weapons";
-  btnBatchSet.hidden = listKind !== "modules";
-  batchInput.hidden = listKind !== "modules";
+  btnBatchSet.hidden = false;
+  btnBatchSet.textContent = "执行批量操作";
+  batchInput.hidden = batchAction.value === "clear";
   $("listHint").textContent = listKind === "characters" || listKind === "weapons"
     ? "选择行后可在下方编辑详情。"
-    : "模块 ID 即数组下标，直接编辑数量。";
+    : "模块 ID 即数组下标；可选 / 隐藏 / 全部三种查看模式。";
 }
 
 function renderTable() {
@@ -733,7 +814,15 @@ function renderDetail() {
 
   html += `</form><div class="detail-actions"><button data-action="apply-detail">应用修改</button>` +
     `<button data-action="reset-detail-form">重置表单</button></div>`;
+  if (kind === "weapons") {
+    html += `<div class="loadout-box"><div class="detail-actions">` +
+      `<button data-action="save-loadout">保存预设</button>` +
+      `<button data-action="export-loadout">导出文件</button>` +
+      `<button data-action="import-loadout">导入文件</button>` +
+      `</div><div id="loadoutPresets"></div></div>`;
+  }
   el.innerHTML = html;
+  if (kind === "weapons") renderLoadoutPresets();
 }
 
 function renderOverview() {
@@ -807,6 +896,10 @@ function renderAll() {
     renderOverview();
   } else if (activeTab === "raw") {
     $("rawArea").value = root ? canonicalJson() : "";
+  } else if (activeTab === "compare") {
+    renderCompare();
+  } else if (activeTab === "fields") {
+    renderFieldTab();
   } else {
     renderListToolbar();
     renderTable();
@@ -822,6 +915,8 @@ function switchTab(tab) {
   );
   $("panel-overview").classList.toggle("active", tab === "overview");
   $("panel-list").classList.toggle("active", ["characters", "weapons", "modules"].includes(tab));
+  $("panel-compare").classList.toggle("active", tab === "compare");
+  $("panel-fields").classList.toggle("active", tab === "fields");
   $("panel-raw").classList.toggle("active", tab === "raw");
 
   if (["characters", "weapons", "modules"].includes(tab)) {
@@ -834,6 +929,10 @@ function switchTab(tab) {
     renderDetail();
   } else if (tab === "raw") {
     $("rawArea").value = root ? canonicalJson() : "";
+  } else if (tab === "compare") {
+    renderCompare();
+  } else if (tab === "fields") {
+    renderFieldTab();
   } else {
     renderOverview();
   }
@@ -966,29 +1065,32 @@ function clearRow() {
   const label = listKind === "characters" ? "角色" : listKind === "weapons" ? "武器" : "模块";
   if (!window.confirm("确定清空" + label + "槽 " + slot + "？该操作可撤销。")) return;
   pushHistory("清空" + label + "槽 " + slot);
-
-  if (listKind === "modules") {
-    setArrVal("ag_inv_modul_count", slot, 0, INVENTORY_LEN);
-  } else {
-    const keys = listKind === "characters" ? CHAR_COPY_KEYS : WEAPON_COPY_KEYS;
-    for (const key of keys) {
-      const arr = root[key];
-      if (!Array.isArray(arr) || slot >= arr.length) continue;
-      arr[slot] = defaultForArr(key, arr);
-    }
-    if (listKind === "characters" && Array.isArray(root.ag_inv_wpn_to_char)) {
-      root.ag_inv_wpn_to_char.forEach((to, i) => {
-        if (to === slot) root.ag_inv_wpn_to_char[i] = 0;
-      });
-    }
-    if (listKind === "weapons" && Array.isArray(root.ag_inv_char_first_weapon)) {
-      root.ag_inv_char_first_weapon.forEach((fw, i) => {
-        if (fw === slot) root.ag_inv_char_first_weapon[i] = 0;
-      });
-    }
-  }
+  clearSlotValues(listKind, slot);
   renderAll();
   setStatus("已清空" + label + "槽 " + slot + "。", "ok");
+}
+
+function clearSlotValues(kind, slot) {
+  if (kind === "modules") {
+    setArrVal("ag_inv_modul_count", slot, 0, INVENTORY_LEN);
+    return;
+  }
+  const keys = kind === "characters" ? CHAR_COPY_KEYS : WEAPON_COPY_KEYS;
+  for (const key of keys) {
+    const arr = root[key];
+    if (!Array.isArray(arr) || slot >= arr.length) continue;
+    arr[slot] = defaultForArr(key, arr);
+  }
+  if (kind === "characters" && Array.isArray(root.ag_inv_wpn_to_char)) {
+    root.ag_inv_wpn_to_char.forEach((to, i) => {
+      if (to === slot) root.ag_inv_wpn_to_char[i] = 0;
+    });
+  }
+  if (kind === "weapons" && Array.isArray(root.ag_inv_char_first_weapon)) {
+    root.ag_inv_char_first_weapon.forEach((fw, i) => {
+      if (fw === slot) root.ag_inv_char_first_weapon[i] = 0;
+    });
+  }
 }
 
 function resetMods() {
@@ -1008,24 +1110,168 @@ function resetMods() {
   setStatus("已恢复武器槽 " + selected.slot + " 的默认配件。", "ok");
 }
 
-function batchSet() {
-  if (!root || listKind !== "modules") return;
-  const raw = batchInput.value.trim();
-  if (raw === "" || !Number.isInteger(Number(raw)) || Number(raw) < 0) {
-    setStatus("批量数量必须是大于等于 0 的整数。", "err");
+function loadPresets() {
+  try {
+    const raw = localStorage.getItem(PRESET_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function savePresets(list) {
+  try {
+    localStorage.setItem(PRESET_KEY, JSON.stringify(list));
+  } catch (e) {
+    setStatus("预设库保存失败：" + e.message, "err");
+  }
+}
+
+function validatePreset(p) {
+  return p && typeof p === "object" &&
+    Array.isArray(p.mods) && p.mods.length === 13 &&
+    p.mods.every((v) => Number.isFinite(v));
+}
+
+function currentLoadout() {
+  const mods = [];
+  for (let n = 1; n <= 13; n++) mods.push(getVal("ag_inv_wpn_mod_" + n, selected.slot) || 0);
+  return {
+    type: "weapon-loadout",
+    version: 1,
+    weaponId: rowId("weapons", selected.slot),
+    weaponName: nameOf("weapon", rowId("weapons", selected.slot), currentLang) || "",
+    mods
+  };
+}
+
+function renderLoadoutPresets() {
+  const el = $("loadoutPresets");
+  if (!el) return;
+  const presets = loadPresets();
+  el.innerHTML = presets.length
+    ? `<div class="preset-title">预设库</div>` + presets.map((p, i) =>
+        `<div class="preset-row"><span>${esc(p.name || p.weaponName || "预设 " + (i + 1))}</span>` +
+        `<button class="mini" data-action="use-preset" data-index="${i}">应用</button>` +
+        `<button class="mini danger" data-action="delete-preset" data-index="${i}">删除</button></div>`
+      ).join("")
+    : `<div class="muted">暂无预设，可先保存当前武器配件。</div>`;
+}
+
+function saveLoadout() {
+  if (!root || listKind !== "weapons" || selected.slot < 0) return;
+  const preset = currentLoadout();
+  const name = window.prompt("预设名称：", preset.weaponName || "武器 " + selected.slot);
+  if (name === null) return;
+  preset.name = name.trim() || ("武器 " + selected.slot);
+  const list = loadPresets();
+  list.push(preset);
+  savePresets(list);
+  renderLoadoutPresets();
+  setStatus("已保存预设：" + preset.name, "ok");
+}
+
+function usePreset(index) {
+  if (!root || listKind !== "weapons" || selected.slot < 0) return;
+  const presets = loadPresets();
+  const p = presets[index];
+  if (!p || !validatePreset(p)) {
+    setStatus("预设数据无效。", "err");
     return;
   }
-  const count = Number(raw);
-  const rows = buildRows("modules").filter(matchesFilter);
-  if (!rows.length) {
-    setStatus("当前筛选条件下没有模块条目。", "err");
-    return;
+  pushHistory("应用预设 " + (p.name || index));
+  for (let n = 1; n <= 13; n++) {
+    setArrVal("ag_inv_wpn_mod_" + n, selected.slot, p.mods[n - 1] || 0, INVENTORY_LEN);
   }
-  if (!window.confirm("将当前筛选出的 " + rows.length + " 个模块数量设置为 " + count + "？")) return;
-  pushHistory("批量设置模块数量");
-  for (const r of rows) setArrVal("ag_inv_modul_count", r.slot, count, INVENTORY_LEN);
   renderAll();
-  setStatus("已批量设置 " + rows.length + " 个模块数量。", "ok");
+  setStatus("已应用预设到武器槽 " + selected.slot + "。", "ok");
+}
+
+function deletePreset(index) {
+  const presets = loadPresets();
+  const p = presets[index];
+  if (!p) return;
+  if (!window.confirm("删除预设：" + (p.name || "预设 " + (index + 1)) + "？")) return;
+  presets.splice(index, 1);
+  savePresets(presets);
+  renderLoadoutPresets();
+  setStatus("已删除预设。", "ok");
+}
+
+function exportLoadout() {
+  if (!root || listKind !== "weapons" || selected.slot < 0) return;
+  const preset = currentLoadout();
+  preset.name = preset.weaponName || "武器 " + selected.slot;
+  const json = JSON.stringify(preset, null, 2);
+  downloadBytes(new TextEncoder().encode(json), "weapon_loadout_" + preset.weaponId + ".json");
+  setStatus("已导出武器配件预设文件。", "ok");
+}
+
+async function importLoadoutFile(file) {
+  try {
+    const p = JSON.parse(await file.text());
+    if (!validatePreset(p)) throw new Error("预设需要包含 13 个配件 ID 的 mods 数组。");
+    const list = loadPresets();
+    list.push(p);
+    savePresets(list);
+    if (listKind === "weapons" && selected.slot >= 0) {
+      pushHistory("导入预设");
+      for (let n = 1; n <= 13; n++) {
+        setArrVal("ag_inv_wpn_mod_" + n, selected.slot, p.mods[n - 1] || 0, INVENTORY_LEN);
+      }
+      renderAll();
+    } else {
+      renderLoadoutPresets();
+    }
+    setStatus("已导入预设：" + (p.name || p.weaponName || file.name), "ok");
+  } catch (e) {
+    setStatus("导入预设失败：" + e.message, "err");
+  }
+}
+
+function batchSet() {
+  if (!root) return;
+  const action = batchAction.value;
+  const rows = buildRows(listKind).filter(matchesFilter);
+  if (!rows.length) {
+    setStatus("当前筛选条件下没有条目。", "err");
+    return;
+  }
+
+  let value = null;
+  if (!["clear", "lock", "unlock"].includes(action)) {
+    const raw = batchInput.value.trim();
+    if (raw === "" || !Number.isInteger(Number(raw)) || Number(raw) < 0) {
+      setStatus("批量值必须是大于等于 0 的整数。", "err");
+      return;
+    }
+    value = Number(raw);
+  }
+
+  const label = listKind === "characters" ? "角色" : listKind === "weapons" ? "武器" : "模块";
+  if (!window.confirm("将对筛选出的 " + rows.length + " 个" + label + "执行“" + action + "”操作？")) return;
+  pushHistory("批量操作 " + label);
+
+  if (action === "clear") {
+    for (const r of rows) clearSlotValues(listKind, r.slot);
+  } else if (action === "count") {
+    for (const r of rows) setArrVal("ag_inv_modul_count", r.slot, value, INVENTORY_LEN);
+  } else if (action === "id") {
+    const key = listKind === "characters" ? "ag_inv_char_id" : "ag_inv_wpn_id";
+    for (const r of rows) setArrVal(key, r.slot, value, INVENTORY_LEN);
+  } else if (action === "lvl") {
+    const key = listKind === "characters" ? "ag_inv_char_lvl" : "ag_inv_wpn_lvl";
+    for (const r of rows) setArrVal(key, r.slot, value, INVENTORY_LEN);
+  } else if (action === "lock") {
+    const key = listKind === "characters" ? "ag_inv_char_lock" : "ag_inv_wpn_lock";
+    for (const r of rows) setArrVal(key, r.slot, true, INVENTORY_LEN);
+  } else if (action === "unlock") {
+    const key = listKind === "characters" ? "ag_inv_char_lock" : "ag_inv_wpn_lock";
+    for (const r of rows) setArrVal(key, r.slot, false, INVENTORY_LEN);
+  }
+  renderAll();
+  setStatus("已对 " + rows.length + " 个" + label + "执行批量操作。", "ok");
 }
 
 function changePage(delta) {
@@ -1173,6 +1419,455 @@ function formatRaw() {
   }
 }
 
+function getArrIn(rootObj, key) {
+  return rootObj && Array.isArray(rootObj[key]) ? rootObj[key] : null;
+}
+
+async function loadCompareFile(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let json;
+  const magic = bytesToAscii(bytes.slice(0, 8));
+  if (magic === SAVE_MAGIC || magic === MIGRATION_MAGIC) {
+    json = await decryptBytes(bytes);
+  } else {
+    json = new TextDecoder().decode(bytes);
+    JSON.parse(json);
+  }
+  const parsed = JSON.parse(json);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("对比存档 JSON 必须是对象。");
+  }
+  compareRoot = parsed;
+  compareName = file.name;
+  compareKind = "characters";
+  renderCompare();
+  setStatus("已加载对比存档：" + file.name, "ok");
+}
+
+function clearCompare() {
+  compareRoot = null;
+  compareName = "";
+  renderCompare();
+  setStatus("已清除对比存档。", "ok");
+}
+
+function arrDiffForKey(key, a, b) {
+  const arrA = getArrIn(a, key) || [];
+  const arrB = getArrIn(b, key) || [];
+  const len = Math.max(arrA.length, arrB.length);
+  const out = [];
+  for (let i = 0; i < len; i++) {
+    const va = arrA[i] == null ? "0" : JSON.stringify(arrA[i]);
+    const vb = arrB[i] == null ? "0" : JSON.stringify(arrB[i]);
+    if (va !== vb) out.push(i);
+  }
+  return out;
+}
+
+function compareSaveSummary() {
+  const out = { chars: [], weapons: [], modules: [], settings: 0 };
+  if (!root || !compareRoot) return out;
+  const charSet = new Set();
+  for (const k of COMPARE_CHAR_KEYS) {
+    arrDiffForKey(k, root, compareRoot).forEach((i) => charSet.add(i));
+  }
+  out.chars = [...charSet].sort((a, b) => a - b);
+  const wpnSet = new Set();
+  for (const k of COMPARE_WEAPON_KEYS) {
+    arrDiffForKey(k, root, compareRoot).forEach((i) => wpnSet.add(i));
+  }
+  out.weapons = [...wpnSet].sort((a, b) => a - b);
+  out.modules = arrDiffForKey("ag_inv_modul_count", root, compareRoot);
+  let settings = 0;
+  for (const f of OVERVIEW_FIELDS) {
+    const a = JSON.stringify(root[f.key] == null ? null : root[f.key]);
+    const b = JSON.stringify(compareRoot[f.key] == null ? null : compareRoot[f.key]);
+    if (a !== b) settings++;
+  }
+  out.settings = settings;
+  return out;
+}
+
+function fmtCompareChar(obj, slot) {
+  const id = getArrIn(obj, "ag_inv_char_id") && getArrIn(obj, "ag_inv_char_id")[slot] || 0;
+  if (!id) return "空";
+  const name = nameOf("character", id, currentLang) || (DATA && DATA.character.prefix[id]) || "";
+  const lvl = getArrIn(obj, "ag_inv_char_lvl") && getArrIn(obj, "ag_inv_char_lvl")[slot] || 0;
+  const hp = getArrIn(obj, "ag_inv_char_hp") && getArrIn(obj, "ag_inv_char_hp")[slot] || 0;
+  return id + " " + name + " Lv" + lvl + " HP" + hp;
+}
+
+function fmtCompareWeapon(obj, slot) {
+  const id = getArrIn(obj, "ag_inv_wpn_id") && getArrIn(obj, "ag_inv_wpn_id")[slot] || 0;
+  if (!id) return "空";
+  const name = nameOf("weapon", id, currentLang) || (DATA && DATA.weapon.prefix[id]) || "";
+  const lvl = getArrIn(obj, "ag_inv_wpn_lvl") && getArrIn(obj, "ag_inv_wpn_lvl")[slot] || 0;
+  const mods = [];
+  for (let n = 1; n <= 13; n++) {
+    const arr = getArrIn(obj, "ag_inv_wpn_mod_" + n);
+    mods.push(arr && arr[slot] || 0);
+  }
+  return id + " " + name + " Lv" + lvl + " [" + mods.join(",") + "]";
+}
+
+function renderCompare() {
+  const s = compareSaveSummary();
+  $("cmpChars").textContent = s.chars.length;
+  $("cmpWeapons").textContent = s.weapons.length;
+  $("cmpModules").textContent = s.modules.length;
+  $("cmpSettings").textContent = s.settings;
+  $("compareName").textContent = compareName ? "对比存档：" + compareName : "未加载对比存档";
+  $("btnClearCompare").disabled = !compareRoot;
+  document.querySelectorAll(".cmp-tab").forEach((b) =>
+    b.classList.toggle("active", b.dataset.cmp === compareKind)
+  );
+  renderCompareTable();
+}
+
+function renderCompareTable() {
+  const head = document.querySelector("#compareTable thead");
+  const body = document.querySelector("#compareTable tbody");
+  if (!root || !compareRoot) {
+    head.innerHTML = "<tr><th>槽</th><th>当前存档</th><th>对比存档</th></tr>";
+    body.innerHTML = `<tr><td class="empty" colspan="3">请先打开主存档并加载对比存档。</td></tr>`;
+    return;
+  }
+  const s = compareSaveSummary();
+  let rows = [];
+  if (compareKind === "characters") {
+    rows = s.chars.map((slot) => ({ slot, a: fmtCompareChar(root, slot), b: fmtCompareChar(compareRoot, slot) }));
+  } else if (compareKind === "weapons") {
+    rows = s.weapons.map((slot) => ({ slot, a: fmtCompareWeapon(root, slot), b: fmtCompareWeapon(compareRoot, slot) }));
+  } else {
+    rows = s.modules.map((slot) => ({
+      slot,
+      a: getArrIn(root, "ag_inv_modul_count") && getArrIn(root, "ag_inv_modul_count")[slot] || 0,
+      b: getArrIn(compareRoot, "ag_inv_modul_count") && getArrIn(compareRoot, "ag_inv_modul_count")[slot] || 0
+    }));
+  }
+  head.innerHTML = "<tr><th>槽</th><th>当前存档</th><th>对比存档</th></tr>";
+  if (!rows.length) {
+    body.innerHTML = `<tr><td class="empty" colspan="3">该分类没有差异。</td></tr>`;
+    return;
+  }
+  const slice = rows.slice(0, 500);
+  body.innerHTML = slice.map((r) =>
+    `<tr><td>${r.slot}</td><td>${esc(r.a)}</td><td>${esc(r.b)}</td></tr>`
+  ).join("") + (rows.length > 500
+    ? `<tr><td class="empty" colspan="3">仅显示前 500 条，共 ${rows.length} 条。</td></tr>`
+    : "");
+}
+
+function collectArrayRows(key, search, nameType) {
+  const arr = getArr(key) || [];
+  const q = search.trim().toLowerCase();
+  const rows = [];
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    const name = nameType ? nameOf(nameType, i, currentLang) : "";
+    const hay = [String(i), String(v), name].join(" ").toLowerCase();
+    if ((v !== 0 && v !== "" && v !== false) || (q && hay.includes(q))) {
+      rows.push({ i, v, name });
+    }
+    if (rows.length >= 500) break;
+  }
+  return rows;
+}
+
+function renderIntArrayRows(tableId, key, search, nameType) {
+  const tbody = document.querySelector("#" + tableId + " tbody");
+  if (!root) {
+    tbody.innerHTML = `<tr><td class="empty" colspan="3">请先打开存档。</td></tr>`;
+    return;
+  }
+  const rows = collectArrayRows(key, search, nameType);
+  tbody.innerHTML = rows.map((r) =>
+    `<tr><td>${r.i}</td><td>${esc(r.name || "-")}</td>` +
+    `<td><input class="arr-edit" data-idx="${r.i}" type="number" step="1" value="${esc(r.v)}"></td></tr>`
+  ).join("") || `<tr><td class="empty" colspan="3">没有匹配的条目。</td></tr>`;
+}
+
+function renderIntArraySimple(tableId, key, search) {
+  const tbody = document.querySelector("#" + tableId + " tbody");
+  if (!root) {
+    tbody.innerHTML = `<tr><td class="empty" colspan="2">请先打开存档。</td></tr>`;
+    return;
+  }
+  const rows = collectArrayRows(key, search, "");
+  tbody.innerHTML = rows.map((r) =>
+    `<tr><td>${r.i}</td>` +
+    `<td><input class="arr-edit" data-idx="${r.i}" type="number" step="1" value="${esc(r.v)}"></td></tr>`
+  ).join("") || `<tr><td class="empty" colspan="2">没有匹配的条目。</td></tr>`;
+}
+
+function applyArrayEdits(tableId, key) {
+  const inputs = document.querySelectorAll("#" + tableId + " .arr-edit");
+  if (!inputs.length) {
+    setStatus("当前没有可应用的条目。", "err");
+    return;
+  }
+  const vals = [];
+  for (const input of inputs) {
+    const idx = Number(input.dataset.idx);
+    const s = input.value.trim();
+    const v = s === "" ? 0 : Number(s);
+    if (!Number.isInteger(v)) {
+      setStatus("数组值必须是整数。", "err");
+      return;
+    }
+    vals.push({ idx, v });
+  }
+  pushHistory("编辑数组 " + key);
+  for (const item of vals) setArrVal(key, item.idx, item.v, INVENTORY_LEN);
+  renderFieldTab();
+  setStatus("已应用数组修改：" + key, "ok");
+}
+
+function missionNameType(key) {
+  for (const [k, , type] of MISSION_KEYS) if (k === key) return type;
+  return "";
+}
+
+function renderMissionTab() {
+  const sel = $("missionKey");
+  sel.innerHTML = MISSION_KEYS.map(([k, label]) =>
+    `<option value="${k}" ${k === missionKey ? "selected" : ""}>${label}</option>`
+  ).join("");
+  renderIntArrayRows("missionTable", missionKey, $("missionSearch").value, missionNameType(missionKey));
+}
+
+function missionBatch() {
+  if (!root) return;
+  const raw = $("missionBatch").value.trim();
+  if (raw === "" || !Number.isInteger(Number(raw)) || Number(raw) < 0) {
+    setStatus("批量值必须是大于等于 0 的整数。", "err");
+    return;
+  }
+  const value = Number(raw);
+  const rows = collectArrayRows(missionKey, $("missionSearch").value, missionNameType(missionKey));
+  if (!rows.length) {
+    setStatus("当前没有匹配的条目。", "err");
+    return;
+  }
+  if (!window.confirm("将 " + rows.length + " 个条目的值设置为 " + value + "？")) return;
+  pushHistory("批量设置 " + missionKey);
+  for (const r of rows) setArrVal(missionKey, r.i, value, INVENTORY_LEN);
+  renderFieldTab();
+  setStatus("已批量设置 " + rows.length + " 个条目。", "ok");
+}
+
+function renderCards() {
+  const tbody = document.querySelector("#cardTable tbody");
+  if (!root) {
+    tbody.innerHTML = `<tr><td class="empty" colspan="4">请先打开存档。</td></tr>`;
+    return;
+  }
+  const own = getArr("ag_inv_card_own") || [];
+  const use = getArr("ag_inv_card_card_count_use") || [];
+  const names = DATA && DATA.names && DATA.names.card
+    ? (DATA.names.card[currentLang] || DATA.names.card.en || [])
+    : [];
+  const len = Math.min(Math.max(own.length, use.length), names.length || 64, 1000);
+  const q = $("cardSearch").value.trim().toLowerCase();
+  const rows = [];
+  for (let i = 0; i < len; i++) {
+    const name = names[i] || "";
+    const hay = [String(i), name].join(" ").toLowerCase();
+    if (q && !hay.includes(q)) continue;
+    rows.push({ i, name, own: own[i] || 0, use: use[i] || 0 });
+  }
+  tbody.innerHTML = rows.map((r) =>
+    `<tr><td>${r.i}</td><td>${esc(r.name || "-")}</td>` +
+    `<td><input class="card-own" data-idx="${r.i}" type="number" min="0" step="1" value="${r.own}"></td>` +
+    `<td><input class="card-count" data-idx="${r.i}" type="number" min="0" step="1" value="${r.use}"></td></tr>`
+  ).join("") || `<tr><td class="empty" colspan="4">没有匹配的卡牌。</td></tr>`;
+}
+
+function applyCards() {
+  if (!root) return;
+  const ownInputs = document.querySelectorAll("#cardTable .card-own");
+  const useInputs = document.querySelectorAll("#cardTable .card-count");
+  const vals = [];
+  for (const input of ownInputs) {
+    const idx = Number(input.dataset.idx);
+    const s = input.value.trim();
+    const v = s === "" ? 0 : Number(s);
+    if (!Number.isInteger(v) || v < 0) {
+      setStatus("卡牌拥有值必须是整数。", "err");
+      return;
+    }
+    vals.push({ idx, own: v });
+  }
+  for (const input of useInputs) {
+    const idx = Number(input.dataset.idx);
+    const s = input.value.trim();
+    const v = s === "" ? 0 : Number(s);
+    if (!Number.isInteger(v) || v < 0) {
+      setStatus("卡牌使用次数必须是整数。", "err");
+      return;
+    }
+    const item = vals.find((x) => x.idx === idx);
+    if (item) item.use = v;
+  }
+  pushHistory("编辑卡牌");
+  for (const item of vals) {
+    setArrVal("ag_inv_card_own", item.idx, item.own, INVENTORY_LEN);
+    setArrVal("ag_inv_card_card_count_use", item.idx, item.use || 0, INVENTORY_LEN);
+  }
+  renderFieldTab();
+  setStatus("已应用卡牌修改。", "ok");
+}
+
+function renderPlayerValuesForm() {
+  const form = $("playerValuesForm");
+  const arr = getArr("ag_player_values") || [];
+  form.innerHTML = arr.map((v, i) =>
+    `<label class="field"><span>value[${i}]</span>` +
+    `<input type="number" step="1" data-pv="${i}" value="${esc(v)}"></label>`
+  ).join("") || `<div class="muted">存档中没有 ag_player_values。</div>`;
+}
+
+function applyPlayerValues() {
+  if (!root) return;
+  const inputs = document.querySelectorAll("#playerValuesForm input[data-pv]");
+  const vals = [];
+  for (const input of inputs) {
+    const idx = Number(input.dataset.pv);
+    const s = input.value.trim();
+    const v = s === "" ? 0 : Number(s);
+    if (!Number.isFinite(v)) {
+      setStatus("玩家数值必须是数字。", "err");
+      return;
+    }
+    vals.push({ idx, v });
+  }
+  pushHistory("编辑玩家数值");
+  for (const item of vals) setArrVal("ag_player_values", item.idx, item.v, 0);
+  renderFieldTab();
+  setStatus("已应用玩家数值。", "ok");
+}
+
+function renderResourceScalars() {
+  const form = $("resourceScalarForm");
+  if (!root) {
+    form.innerHTML = "";
+    return;
+  }
+  form.innerHTML = RESOURCE_SCALAR_FIELDS.map((f) =>
+    `<label class="field"><span>${f.label}</span>${inputHtml(f, root[f.key])}</label>`
+  ).join("");
+}
+
+function applyResourceScalars() {
+  if (!root) return;
+  const form = $("resourceScalarForm");
+  const next = {};
+  for (const f of RESOURCE_SCALAR_FIELDS) {
+    const el = form.querySelector(`[data-field="${f.key}"]`);
+    if (!el) continue;
+    const s = el.value.trim();
+    const v = s === "" ? 0 : Number(s);
+    if (!Number.isFinite(v)) {
+      setStatus(f.label + " 不是有效数字。", "err");
+      return;
+    }
+    next[f.key] = v;
+  }
+  pushHistory("编辑常用字段");
+  Object.assign(root, next);
+  renderFieldTab();
+  setStatus("已应用常用字段。", "ok");
+}
+
+function renderShop() {
+  const tbody = document.querySelector("#shopTable tbody");
+  const ids = getArr("ag_player_daily_shop_id") || [];
+  const buy = getArr("ag_player_daily_shop_buy") || [];
+  const buyMax = getArr("ag_player_daily_shop_buy_max") || [];
+  const type = getArr("ag_player_daily_shop_type") || [];
+  const len = Math.max(ids.length, buy.length, buyMax.length, type.length);
+  const rows = [];
+  for (let i = 0; i < len; i++) rows.push({ i, id: ids[i] || 0, buy: buy[i] || 0, max: buyMax[i] || 0, type: type[i] || 0 });
+  tbody.innerHTML = rows.map((r) =>
+    `<tr><td>${r.i}</td>` +
+    `<td><input class="shop-id" data-idx="${r.i}" type="number" step="1" value="${r.id}"></td>` +
+    `<td><input class="shop-buy" data-idx="${r.i}" type="number" step="1" value="${r.buy}"></td>` +
+    `<td><input class="shop-buy-max" data-idx="${r.i}" type="number" step="1" value="${r.max}"></td>` +
+    `<td><input class="shop-type" data-idx="${r.i}" type="number" step="1" value="${r.type}"></td></tr>`
+  ).join("");
+}
+
+function applyShop() {
+  if (!root) return;
+  const groups = [
+    ["ag_player_daily_shop_id", ".shop-id"],
+    ["ag_player_daily_shop_buy", ".shop-buy"],
+    ["ag_player_daily_shop_buy_max", ".shop-buy-max"],
+    ["ag_player_daily_shop_type", ".shop-type"]
+  ];
+  const all = [];
+  for (const [key, sel] of groups) {
+    for (const input of document.querySelectorAll("#shopTable " + sel)) {
+      const idx = Number(input.dataset.idx);
+      const s = input.value.trim();
+      const v = s === "" ? 0 : Number(s);
+      if (!Number.isInteger(v)) {
+        setStatus("商店字段必须是整数。", "err");
+        return;
+      }
+      all.push({ key, idx, v });
+    }
+  }
+  pushHistory("编辑每日商店");
+  for (const item of all) setArrVal(item.key, item.idx, item.v, INVENTORY_LEN);
+  renderFieldTab();
+  setStatus("已应用每日商店。", "ok");
+}
+
+function renderMiscTab() {
+  const sel = $("miscKey");
+  sel.innerHTML = MISC_KEYS.map(([k, label]) =>
+    `<option value="${k}" ${k === miscKey ? "selected" : ""}>${label}</option>`
+  ).join("");
+  renderIntArraySimple("miscTable", miscKey, $("miscSearch").value);
+  const form = $("formationNamesForm");
+  const arr = getArr("ag_formation_preset_name") || [];
+  form.innerHTML = arr.map((v, i) =>
+    `<label class="field"><span>编队 ${i + 1}</span>` +
+    `<input type="text" data-fname="${i}" value="${esc(v)}"></label>`
+  ).join("") || `<div class="muted">存档中没有编队名称。</div>`;
+}
+
+function applyFormationNames() {
+  if (!root) return;
+  const inputs = document.querySelectorAll("#formationNamesForm input[data-fname]");
+  const vals = [];
+  for (const input of inputs) vals.push({ idx: Number(input.dataset.fname), v: input.value });
+  pushHistory("编辑编队名称");
+  for (const item of vals) setArrVal("ag_formation_preset_name", item.idx, item.v, INVENTORY_LEN);
+  renderFieldTab();
+  setStatus("已应用编队名称。", "ok");
+}
+
+function renderResourcesTab() {
+  renderPlayerValuesForm();
+  renderResourceScalars();
+  renderShop();
+}
+
+function renderFieldTab() {
+  document.querySelectorAll(".sub-tab").forEach((b) =>
+    b.classList.toggle("active", b.dataset.fieldtab === fieldTab)
+  );
+  for (const name of ["cards", "missions", "resources", "misc"]) {
+    $("fields-" + name).hidden = fieldTab !== name;
+  }
+  if (fieldTab === "cards") renderCards();
+  else if (fieldTab === "missions") renderMissionTab();
+  else if (fieldTab === "resources") renderResourcesTab();
+  else renderMiscTab();
+}
+
 document.addEventListener("click", (e) => {
   const actionEl = e.target.closest("[data-action]");
   if (actionEl) {
@@ -1189,11 +1884,38 @@ document.addEventListener("click", (e) => {
     else if (action === "parse-raw") parseRaw();
     else if (action === "format-raw") formatRaw();
     else if (action === "apply-overview") applyOverview();
+    else if (action === "save-loadout") saveLoadout();
+    else if (action === "export-loadout") exportLoadout();
+    else if (action === "import-loadout") $("loadoutFileInput").click();
+    else if (action === "use-preset") usePreset(Number(actionEl.dataset.index));
+    else if (action === "delete-preset") deletePreset(Number(actionEl.dataset.index));
+    else if (action === "apply-cards") applyCards();
+    else if (action === "apply-array") {
+      if (fieldTab === "missions") applyArrayEdits("missionTable", missionKey);
+      else if (fieldTab === "misc") applyArrayEdits("miscTable", miscKey);
+    }
+    else if (action === "mission-batch") missionBatch();
+    else if (action === "apply-player-values") applyPlayerValues();
+    else if (action === "apply-resource-scalars") applyResourceScalars();
+    else if (action === "apply-shop") applyShop();
+    else if (action === "apply-formation-names") applyFormationNames();
     return;
   }
   const tabBtn = e.target.closest(".tab-btn");
   if (tabBtn) {
     switchTab(tabBtn.dataset.tab);
+    return;
+  }
+  const subTab = e.target.closest(".sub-tab");
+  if (subTab) {
+    fieldTab = subTab.dataset.fieldtab;
+    renderFieldTab();
+    return;
+  }
+  const cmpTab = e.target.closest(".cmp-tab");
+  if (cmpTab) {
+    compareKind = cmpTab.dataset.cmp;
+    renderCompare();
     return;
   }
   const tr = e.target.closest("tr[data-slot]");
@@ -1222,6 +1944,24 @@ filterSelect.addEventListener("change", () => {
   renderTable();
 });
 
+batchAction.addEventListener("change", () => {
+  batchInput.hidden = batchAction.value === "clear";
+});
+
+$("missionKey").addEventListener("change", (e) => {
+  missionKey = e.target.value;
+  renderMissionTab();
+});
+
+$("miscKey").addEventListener("change", (e) => {
+  miscKey = e.target.value;
+  renderMiscTab();
+});
+
+$("cardSearch").addEventListener("input", () => renderCards());
+$("missionSearch").addEventListener("input", () => renderMissionTab());
+$("miscSearch").addEventListener("input", () => renderMiscTab());
+
 btnOpen.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", async () => {
   const f = fileInput.files && fileInput.files[0];
@@ -1232,6 +1972,24 @@ fileInput.addEventListener("change", async () => {
     setStatus("打开失败：" + e.message, "err");
   }
   fileInput.value = "";
+});
+$("btnLoadCompare").addEventListener("click", () => $("compareFileInput").click());
+$("compareFileInput").addEventListener("change", async () => {
+  const f = $("compareFileInput").files && $("compareFileInput").files[0];
+  if (!f) return;
+  try {
+    await loadCompareFile(f);
+  } catch (e) {
+    setStatus("加载对比存档失败：" + e.message, "err");
+  }
+  $("compareFileInput").value = "";
+});
+$("btnClearCompare").addEventListener("click", clearCompare);
+$("loadoutFileInput").addEventListener("change", async () => {
+  const f = $("loadoutFileInput").files && $("loadoutFileInput").files[0];
+  if (!f) return;
+  await importLoadoutFile(f);
+  $("loadoutFileInput").value = "";
 });
 btnBackup.addEventListener("click", downloadBackup);
 btnRestore.addEventListener("click", restoreOriginal);
