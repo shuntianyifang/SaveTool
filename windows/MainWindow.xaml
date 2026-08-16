@@ -9,6 +9,8 @@
             <Button x:Name="SaveButton" Content="Save" Width="80" Margin="8,0,0,0" Click="SaveButton_Click"/>
             <TextBlock Text="Language:" VerticalAlignment="Center" Margin="16,0,4,0"/>
             <ComboBox x:Name="LanguageBox" Width="90" SelectionChanged="LanguageBox_SelectionChanged"/>
+            <TextBlock Text="View:" VerticalAlignment="Center" Margin="16,0,4,0"/>
+            <ComboBox x:Name="ModuleFilterBox" Width="90" SelectionChanged="ModuleFilterBox_SelectionChanged"/>
             <TextBlock Text="Search:" VerticalAlignment="Center" Margin="16,0,4,0"/>
             <TextBox x:Name="SearchBox" Width="240" TextChanged="SearchBox_TextChanged"/>
         </StackPanel>

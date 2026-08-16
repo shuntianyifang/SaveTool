@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pawns of War 存档工具（离线 Web 版）</title>
+<style>
+__CSS__
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <h1>Pawns of War 存档工具</h1>
+    <span class="sub">离线单文件 · 结构化编辑器 · POWSAVE1 / POWMIGR1</span>
+  </div>
+  <div class="top-actions">
+    <select id="outMode" title="回包输出格式">
+      <option value="auto">自动输出格式</option>
+      <option value="save">POWSAVE1 普通存档</option>
+      <option value="migration">POWMIGR1 迁移文件</option>
+    </select>
+    <button id="btnOpen" class="primary">打开存档</button>
+    <button id="btnBackup" disabled>下载 .bak</button>
+    <button id="btnRestore" disabled>恢复原始</button>
+    <button id="btnUndo" disabled title="Ctrl+Z">撤销</button>
+    <button id="btnRedo" disabled title="Ctrl+Y">重做</button>
+    <button id="btnPack" class="primary" disabled>回包并下载</button>
+  </div>
+</header>
+<input type="file" id="fileInput" accept="*/*" hidden>
+<div class="statusbar">
+  <span id="status">请打开存档文件，或直接拖入窗口。</span>
+  <span id="stats"></span>
+</div>
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="overview">概览</button>
+  <button class="tab-btn" data-tab="characters">角色</button>
+  <button class="tab-btn" data-tab="weapons">武器</button>
+  <button class="tab-btn" data-tab="modules">模块</button>
+  <button class="tab-btn" data-tab="raw">原始 JSON</button>
+</nav>
+<main>
+  <section id="panel-overview" class="panel active">
+    <div class="cards">
+      <div class="stat-card"><span class="stat-num" id="statChars">0</span><span class="stat-label">角色</span></div>
+      <div class="stat-card"><span class="stat-num" id="statWeapons">0</span><span class="stat-label">武器</span></div>
+      <div class="stat-card"><span class="stat-num" id="statModules">0</span><span class="stat-label">模块</span></div>
+      <div class="stat-card"><span class="stat-num" id="statErrors">0</span><span class="stat-label">校验问题</span></div>
+    </div>
+    <div id="issues" class="issues"></div>
+    <div class="editor-card">
+      <div class="editor-head">
+        <h2>玩家设置</h2>
+        <span class="muted" id="overviewFile"></span>
+      </div>
+      <div id="overviewForm" class="form-grid"></div>
+      <div class="detail-actions">
+        <button data-action="apply-overview">应用设置</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="panel-list" class="panel">
+    <div class="list-head">
+      <h2 id="listTitle">角色</h2>
+      <span class="muted" id="listHint"></span>
+    </div>
+    <div class="toolbar">
+      <input id="searchInput" type="search" placeholder="搜索名称 / ID / 槽位">
+      <select id="langSelect" title="名称语言">
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+        <option value="ru">Русский</option>
+        <option value="ko">한국어</option>
+      </select>
+      <select id="filterSelect" title="筛选"></select>
+      <input id="batchInput" type="number" min="0" step="1" value="0" title="批量设置数量" hidden>
+      <span class="page-info" id="pageInfo"></span>
+      <button data-action="prev-page">上一页</button>
+      <button data-action="next-page">下一页</button>
+      <button data-action="copy-row">复制到空槽</button>
+      <button data-action="reset-mods" id="btnResetMods" hidden>恢复默认配件</button>
+      <button data-action="batch-set" id="btnBatchSet" hidden>批量设置数量</button>
+      <button data-action="clear-row" class="danger">清空所选</button>
+    </div>
+    <div class="table-wrap">
+      <table id="itemTable">
+        <thead id="itemHead"></thead>
+        <tbody id="itemBody"></tbody>
+      </table>
+    </div>
+    <div id="detailPanel" class="detail-panel"></div>
+  </section>
+
+  <section id="panel-raw" class="panel">
+    <div class="toolbar">
+      <button data-action="sync-raw">结构化 → JSON</button>
+      <button data-action="parse-raw">JSON → 结构化</button>
+      <button data-action="format-raw">格式化 JSON</button>
+      <span class="muted">修改 JSON 后点击“JSON → 结构化”才会应用。</span>
+    </div>
+    <textarea id="rawArea" spellcheck="false"></textarea>
+  </section>
+</main>
+<script>
+const WEB_DATA = __WEB_DATA_JSON__;
+</script>
+<script>
+__APP_JS__
+</script>
+</body>
+</html>

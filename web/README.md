@@ -1,47 +1,50 @@
-# Pawns of War 存档工具（离线 HTML 版）
+# Pawns of War 存档工具（离线 Web 版）
 
-一个网页文件，不联网、不安装、不上传，Win / Android / iOS 的现代浏览器都能用。
+一个单文件 HTML 工具：双击打开即用，不联网、不安装、不上传，支持现代浏览器。**不含游戏美术资产**，只内置文字与数值数据字典。
 
-返回 [主 README](../README.md)。
+返回 [总 README](../README.md)。
+
+## 功能
+
+- 打开 / 回包 `POWSAVE1` 与 `POWMIGR1`，AES-256-CBC + HMAC-SHA256，算法与 Windows 版一致；也支持直接打开明文 JSON。
+- 结构化编辑：
+  - 角色：ID、名称、兵种、等级、经验、HP、主武器、编队、锁定、各装备槽等。
+  - 武器：ID、装备角色、等级、经验、攻击卡、13 个配件槽，可恢复默认配件。
+  - 模块：按模块 ID 编辑数量，支持批量设置。
+  - 概览：玩家名、语言、音量、战斗设置等常用字段。
+- 原始 JSON 页：结构化内容与 JSON 文本双向同步。
+- 校验：回包前检查数组长度、ID 范围、配件 ID 范围、装备关系；错误可确认后强制回包。
+- 安全：原始文件保留在内存，可下载 `.bak`；可恢复原始内容；支持 `Ctrl+Z` / `Ctrl+Y` 撤销重做。
+- 列表：搜索名称 / ID / 槽位，按语言切换名称（en / ru / zh / ko），分页浏览 1000 长度数组。
 
 ## 文件
 
-- `SaveTool.html` - 主程序，用浏览器打开即可
-- `README.md` - 本说明
+- `SaveTool.html`：最终产物，直接双击打开。
+- `src/template.html`、`src/styles.css`、`src/app.js`：源码。
+- `tools/build_web.py`：数据字典构建脚本。
+- `web_data.json`：构建中间产物。
 
-## 使用步骤
+## 构建
 
-方法1：  
+```powershell
+python tools/build_web.py
+```
 
-1. 打开 `SaveTool.html`（建议 Chrome / Edge / Safari）。
-2. 选择存档文件：
-   - Windows：直接选 `save_file` 或 `render_cache.dat`。
-   - Android / iOS：先把游戏存档复制到 `Download` 或“文件”App 里能访问的位置。
-3. 点“解包为 JSON”。
-4. 在文本框里修改 JSON。
-5. 点“回包并下载”，默认输出：
-   - 普通存档：`save_file`
-   - 迁移文件：`render_cache.dat`
-6. 把下载的文件放回游戏存档位置。
+默认读取 `D:\POW\assets`；可用 `--assets` 指定其他目录，`--no-data-file` 不输出 `web_data.json`。
 
-方法2：  
+脚本只读取 `item_names.json` / `WpnData.json` / `CharData.json` / `ModulData.json`，不读取任何图片、音频、动画资源。
 
-1. 先把存档文件复制到设备能访问的位置，例如 `Download`
-2. 点下面“选择存档文件”，再点“解包为 JSON”；
-3. 点“下载 JSON”
-4. 用其他软件编辑 JSON 文件；
-5. 编辑完成后，点击“导入 JSON”，将 JSON 文件重新导入游戏存档工具。
-6. 点“回包并下载”，把下载的文件放回游戏存档位置。
+## 使用
 
-## 支持的格式
+1. 打开 `SaveTool.html`。
+2. 打开存档，或直接把存档拖入窗口。
+3. 在角色 / 武器 / 模块页编辑，或切换到原始 JSON 手动修改。
+4. 点击“回包并下载”，把文件放回游戏存档位置。
 
-- `POWSAVE1`：普通加密存档
-- `POWMIGR1`：迁移文件（`render_cache.dat`）
-
-加密方式：AES-256-CBC + HMAC-SHA256，算法与 Windows 版 SaveTool 完全一致。
+覆盖原存档前请先备份。
 
 ## 注意事项
 
-- 浏览器不能直接读写手机 App 沙盒，Android / iOS 需要手动复制文件进出。
+- WebCrypto 需要安全上下文：`file://`、`localhost` 或 HTTPS。
+- 浏览器不能直接写手机 App 沙盒，Android / iOS 需要手动复制文件进出。
 - 回包会生成新的随机 IV，每次结果不同，但游戏可以正常读取。
-- 覆盖原存档前请先备份。

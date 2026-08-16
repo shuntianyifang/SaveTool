@@ -10,6 +10,7 @@ namespace PowSaveEditor;
 public partial class MainWindow : Window
 {
     private const string PlaceholderSprite = @"D:\POW\assets\sprites\placeholder.png";
+    private enum ModuleFilter { Active, Hidden, All }
     private readonly AssetIndex _index;
     private JsonObject _root;
     private JsonArray _wpnIds;
@@ -17,6 +18,7 @@ public partial class MainWindow : Window
     private List<ItemEntry> _weapons = new();
     private List<ItemEntry> _characters = new();
     private List<ItemEntry> _modules = new();
+    private ModuleFilter _moduleFilter = ModuleFilter.Active;
     private JsonArray _modCounts;
     private readonly JsonArray[] _wpnMods = new JsonArray[13];
     private string _currentPath;
@@ -34,6 +36,9 @@ public partial class MainWindow : Window
         foreach (var lang in new[] { "en", "ru", "zh", "ko" })
             LanguageBox.Items.Add(lang);
         LanguageBox.SelectedIndex = 0;
+        foreach (var mode in new[] { "可选", "隐藏", "全部" })
+            ModuleFilterBox.Items.Add(mode);
+        ModuleFilterBox.SelectedIndex = 0;
     }
 
     private void OpenButton_Click(object sender, RoutedEventArgs e)
@@ -117,7 +122,10 @@ public partial class MainWindow : Window
         if (_modCounts == null) return result;
         for (int i = 0; i < _modCounts.Count; i++)
         {
-            if (!_index.IsModuleActive(i)) continue;
+            if (i >= _index.ModuleCount) break;
+            bool active = _index.IsModuleActive(i);
+            if (_moduleFilter == ModuleFilter.Active && !active) continue;
+            if (_moduleFilter == ModuleFilter.Hidden && active) continue;
             int count = _modCounts[i]?.GetValue<int>() ?? 0;
             var info = _index.Module(i);
             result.Add(new ItemEntry
@@ -477,6 +485,15 @@ public partial class MainWindow : Window
             _index.CurrentLanguage = lang;
             RefreshAll();
         }
+    }
+
+    private void ModuleFilterBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_index == null || ModuleFilterBox.SelectedIndex < 0) return;
+        _moduleFilter = (ModuleFilter)ModuleFilterBox.SelectedIndex;
+        _modules = BuildModuleEntries();
+        RefreshModules();
+        UpdateStats();
     }
 
     private void UpdateStats()
