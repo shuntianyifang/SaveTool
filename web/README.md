@@ -10,7 +10,7 @@
 - 结构化编辑：
   - 角色：ID、名称、兵种、等级、经验、HP、主武器、编队、锁定、各装备槽等。
   - 武器：ID、装备角色、等级、经验、攻击卡、13 个配件槽，可恢复默认配件。
-  - 模块：按模块 ID 编辑数量，支持批量设置。
+  - 模块：可选 / 隐藏 / 全部三种查看模式，按模块 ID 编辑数量，支持批量设置，隐藏视图与 Windows 版一致。
   - 概览：玩家名、语言、音量、战斗设置等常用字段。
 - 原始 JSON 页：结构化内容与 JSON 文本双向同步。
 - 校验：回包前检查数组长度、ID 范围、配件 ID 范围、装备关系；错误可确认后强制回包。
@@ -32,7 +32,7 @@ python tools/build_web.py
 
 默认读取 `D:\POW\assets`；可用 `--assets` 指定其他目录，`--no-data-file` 不输出 `web_data.json`。
 
-脚本只读取 `item_names.json` / `WpnData.json` / `CharData.json` / `ModulData.json`，不读取任何图片、音频、动画资源。
+脚本只读取 `item_names.json` / `WpnData.json` / `CharData.json` / `ModulData.json`（存在时优先用 `ModulData_resolved.json` 判断模块可用性），不读取任何图片、音频、动画资源。
 
 ## 使用
 

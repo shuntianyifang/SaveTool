@@ -32,6 +32,8 @@ def build_data(assets_dir):
     wpn = load_json(assets_dir / "il2cpp_dump" / "WpnData.json")
     char = load_json(assets_dir / "il2cpp_dump" / "CharData.json")
     mod_root = load_json(assets_dir / "il2cpp_dump_recursive" / "ModulData.json")
+    resolved_mod_path = assets_dir / "il2cpp_dump_recursive" / "ModulData_resolved.json"
+    mod_active_root = load_json(resolved_mod_path) if resolved_mod_path.exists() else mod_root
     item_names = load_json(assets_dir / "item_names.json")
 
     weapon_prefix = unwrap(wpn["wpn_prefix"])
@@ -52,6 +54,7 @@ def build_data(assets_dir):
         return unwrap(char[key])
 
     mods = mod_root["mod"]
+    mod_active_list = mod_active_root["mod"]
     module_count = len(mods)
 
     web_data = {
@@ -72,7 +75,7 @@ def build_data(assets_dir):
         },
         "module": {
             "prefix": [m.get("prefix") or "" for m in mods],
-            "active": [bool(m.get("active")) for m in mods],
+            "active": [bool(m.get("active")) for m in mod_active_list],
         },
         "names": {
             "weapon": _empty_names(weapon_count),

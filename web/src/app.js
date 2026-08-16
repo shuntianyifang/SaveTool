@@ -38,14 +38,13 @@ const FILTERS = {
     ["unlocked", "未锁定"]
   ],
   modules: [
-    ["positive", "数量>0"],
-    ["all", "全部"],
-    ["active", "可用"],
-    ["disabled", "禁用"]
+    ["selectable", "可选"],
+    ["hidden", "隐藏"],
+    ["all", "全部"]
   ]
 };
 
-const DEFAULT_FILTER = { characters: "nonempty", weapons: "nonempty", modules: "positive" };
+const DEFAULT_FILTER = { characters: "nonempty", weapons: "nonempty", modules: "selectable" };
 
 const TEXT_KEYS = new Set([
   "ag_inv_char_name",
@@ -529,7 +528,10 @@ function weaponNameAt(slot) {
 
 function buildRows(kind) {
   const rows = [];
-  const len = (getArr("ag_inv_char_id") || []).length || INVENTORY_LEN;
+  const arrLen = (getArr("ag_inv_char_id") || []).length || INVENTORY_LEN;
+  const len = kind === "modules" && DATA && DATA.module
+    ? Math.min(arrLen, DATA.module.prefix.length)
+    : arrLen;
   for (let i = 0; i < len; i++) {
     if (kind === "characters") {
       const id = rowId(kind, i);
@@ -588,11 +590,10 @@ function matchesFilter(row) {
     if (!hay.includes(q)) return false;
   }
   if (filter === "nonempty") return row.id !== 0 && row.id !== "";
-  if (filter === "positive") return (row.count || 0) > 0;
   if (filter === "locked") return row.lock === true;
   if (filter === "unlocked") return row.lock === false;
-  if (filter === "active") return row.active === true;
-  if (filter === "disabled") return row.active === false;
+  if (filter === "selectable") return row.active === true;
+  if (filter === "hidden") return row.active === false;
   return true;
 }
 
