@@ -1779,6 +1779,44 @@ function applyResourceScalars() {
   setStatus("已应用常用字段。", "ok");
 }
 
+function shopItemKind(type) {
+  return Number(type) === 1 ? "character" : Number(type) === 2 ? "weapon" : "";
+}
+
+function shopTypeOptions(value) {
+  const type = Number(value);
+  const options = [
+    `<option value="1" ${type === 1 ? "selected" : ""}>1 人物</option>`,
+    `<option value="2" ${type === 2 ? "selected" : ""}>2 武器</option>`
+  ];
+  if (type !== 1 && type !== 2) {
+    options.unshift(`<option value="${type}" selected>${type} 未知类型</option>`);
+  }
+  return options.join("");
+}
+
+function shopItemOptions(type, value) {
+  const kind = shopItemKind(type);
+  const items = kind && DATA && DATA[kind] && DATA[kind].prefix ? DATA[kind].prefix : [];
+  const id = Number(value);
+  const options = [];
+  if (!kind || id < 1 || id >= items.length) {
+    options.push(`<option value="${id}" selected>${id} ${id < 1 ? "未设置" : "未知物品"}</option>`);
+  }
+  for (let itemId = 1; itemId < items.length; itemId++) {
+    const name = nameOf(kind, itemId, currentLang) || "未命名";
+    options.push(`<option value="${itemId}" ${itemId === id ? "selected" : ""}>${itemId} - ${esc(name)}</option>`);
+  }
+  return options.join("");
+}
+
+function refreshShopItemOptions(index) {
+  const type = document.querySelector(`#shopTable .shop-type[data-idx="${index}"]`);
+  const id = document.querySelector(`#shopTable .shop-id[data-idx="${index}"]`);
+  if (!type || !id) return;
+  id.innerHTML = shopItemOptions(type.value, id.value);
+}
+
 function renderShop() {
   const tbody = document.querySelector("#shopTable tbody");
   const ids = getArr("ag_player_daily_shop_id") || [];
@@ -1790,10 +1828,10 @@ function renderShop() {
   for (let i = 0; i < len; i++) rows.push({ i, id: ids[i] || 0, buy: buy[i] || 0, max: buyMax[i] || 0, type: type[i] || 0 });
   tbody.innerHTML = rows.map((r) =>
     `<tr><td>${r.i}</td>` +
-    `<td><input class="shop-id" data-idx="${r.i}" type="number" step="1" value="${r.id}"></td>` +
+    `<td><select class="shop-id" data-idx="${r.i}">${shopItemOptions(r.type, r.id)}</select></td>` +
     `<td><input class="shop-buy" data-idx="${r.i}" type="number" step="1" value="${r.buy}"></td>` +
     `<td><input class="shop-buy-max" data-idx="${r.i}" type="number" step="1" value="${r.max}"></td>` +
-    `<td><input class="shop-type" data-idx="${r.i}" type="number" step="1" value="${r.type}"></td></tr>`
+    `<td><select class="shop-type" data-idx="${r.i}">${shopTypeOptions(r.type)}</select></td></tr>`
   ).join("");
 }
 
@@ -1956,6 +1994,10 @@ $("missionKey").addEventListener("change", (e) => {
 $("miscKey").addEventListener("change", (e) => {
   miscKey = e.target.value;
   renderMiscTab();
+});
+
+$("shopTable").addEventListener("change", (e) => {
+  if (e.target.matches(".shop-type")) refreshShopItemOptions(e.target.dataset.idx);
 });
 
 $("cardSearch").addEventListener("input", () => renderCards());
