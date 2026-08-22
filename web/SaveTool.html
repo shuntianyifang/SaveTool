@@ -664,6 +664,32 @@ const MISC_KEYS = [
   ["ag_drop_count_modul", "模块掉落计数", ""]
 ];
 
+const AG_PLAYER_VALUES_KEYS = [
+  ["ag_player_values_0", "货币", ""],
+  ["ag_player_values_1", "单位上限", ""],
+  ["ag_player_values_2", "武器上限", ""],
+  ["ag_player_values_3", "玩家等级", ""],
+  ["ag_player_values_4", "玩家经验值", ""],
+  ["ag_player_values_5", "玩家升级所需的经验值", ""],
+  ["ag_player_values_6", "磁盘", ""],
+  ["ag_player_values_7", "兵种升级经验", ""],
+  ["ag_player_values_8", "武器升级经验", ""],
+  ["ag_player_values_9", "", ""],
+  ["ag_player_values_10", "", ""],
+  ["ag_player_values_11", "", ""],
+  ["ag_player_values_12", "特殊钥匙卡", ""]
+];
+
+const AG_PLAYER_VALUE_LABELS = new Map(
+  AG_PLAYER_VALUES_KEYS
+    .map(([key, label]) => {
+      const m = /^ag_player_values_(\d+)$/.exec(key);
+      if (!m || !label) return null;
+      return [Number(m[1]), label];
+    })
+    .filter((x) => x)
+);
+
 const RESOURCE_SCALAR_FIELDS = [
   { key: "ag_player_daily_activity", label: "每日活跃日期", type: "int" },
   { key: "ag_player_daily_boss_day", label: "每日首领日期", type: "int" },
@@ -2190,8 +2216,9 @@ function applyCards() {
 function renderPlayerValuesForm() {
   const form = $("playerValuesForm");
   const arr = getArr("ag_player_values") || [];
+  const labelFor = (i) => AG_PLAYER_VALUE_LABELS.get(i) || `value[${i}]`;
   form.innerHTML = arr.map((v, i) =>
-    `<label class="field"><span>value[${i}]</span>` +
+    `<label class="field"><span>${esc(labelFor(i))}</span>` +
     `<input type="number" step="1" data-pv="${i}" value="${esc(v)}"></label>`
   ).join("") || `<div class="muted">存档中没有 ag_player_values。</div>`;
 }
