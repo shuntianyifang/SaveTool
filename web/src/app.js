@@ -770,6 +770,34 @@ function inputHtml(f, val) {
   return `<input type="${inputType}" step="${step}" data-field="${f.key}" value="${esc(val)}">`;
 }
 
+function itemPickerLabel(kind, id, allowZero) {
+  if (allowZero && id === 0) return "0 - 空";
+  return `${id} - ${nameOf(kind, id, currentLang) || "未命名"}`;
+}
+
+function itemPickerHtml(kind, id, listId, attributes, allowZero) {
+  const items = DATA && DATA[kind] && DATA[kind].prefix ? DATA[kind].prefix : [];
+  const options = [];
+  if (allowZero) options.push(`<option value="0 - 空"></option>`);
+  for (let itemId = 1; itemId < items.length; itemId++) {
+    options.push(`<option value="${esc(itemPickerLabel(kind, itemId, false))}"></option>`);
+  }
+  const valid = (allowZero && id === 0) || (id >= 1 && id < items.length);
+  const value = valid ? itemPickerLabel(kind, id, allowZero) : String(id);
+  return `<input ${attributes} type="text" list="${listId}" value="${esc(value)}" autocomplete="off">` +
+    `<datalist id="${listId}">${options.join("")}</datalist>`;
+}
+
+function parseItemPicker(input, kind, allowZero) {
+  const value = input.value.trim();
+  if (allowZero && (value === "0" || value === "0 - 空")) return 0;
+  if (!/^\d+$/.test(value) && !/^\d+\s+-\s+.+$/.test(value)) return null;
+  const id = Number(value.match(/^\d+/)[0]);
+  const items = DATA && DATA[kind] && DATA[kind].prefix ? DATA[kind].prefix : [];
+  if (!Number.isInteger(id) || id < 1 || id >= items.length) return null;
+  return value === String(id) || value === itemPickerLabel(kind, id, false) ? id : null;
+}
+
 function renderDetail() {
   const el = $("detailPanel");
   if (!root || selected.slot < 0 || !["characters", "weapons", "modules"].includes(selected.kind)) {
@@ -801,14 +829,8 @@ function renderDetail() {
   if (kind === "weapons") {
     for (let n = 1; n <= 13; n++) {
       const modId = getVal("ag_inv_wpn_mod_" + n, slot) || 0;
-      const options = [`<option value="0">空</option>`];
-      if (DATA && DATA.module) {
-        for (let m = 1; m < DATA.module.prefix.length; m++) {
-          const name = nameOf("module", m, currentLang) || DATA.module.prefix[m];
-          options.push(`<option value="${m}" ${m === modId ? "selected" : ""}>${m} - ${esc(name)}</option>`);
-        }
-      }
-      html += `<label class="field field-wide"><span>配件槽 ${n}</span><select data-mod="${n}">${options.join("")}</select></label>`;
+      html += `<label class="field field-wide"><span>配件槽 ${n}</span>` +
+        itemPickerHtml("module", modId, `module-picker-${n}`, `data-mod="${n}"`, true) + `</label>`;
     }
   }
 
@@ -1327,7 +1349,9 @@ function applyDetail() {
     }
     for (let n = 1; n <= 13; n++) {
       const el = form.querySelector(`[data-mod="${n}"]`);
-      values["ag_inv_wpn_mod_" + n] = el ? Number(el.value) : 0;
+      const id = el ? parseItemPicker(el, "module", true) : 0;
+      if (id === null) errors.push("配件槽 " + n + " 必须选择有效配件或填写有效 ID。");
+      values["ag_inv_wpn_mod_" + n] = id;
     }
   }
 
@@ -1795,26 +1819,18 @@ function shopTypeOptions(value) {
   return options.join("");
 }
 
-function shopItemOptions(type, value) {
+function shopItemPickerHtml(index, type, id) {
   const kind = shopItemKind(type);
-  const items = kind && DATA && DATA[kind] && DATA[kind].prefix ? DATA[kind].prefix : [];
-  const id = Number(value);
-  const options = [];
-  if (!kind || id < 1 || id >= items.length) {
-    options.push(`<option value="${id}" selected>${id} ${id < 1 ? "未设置" : "未知物品"}</option>`);
-  }
-  for (let itemId = 1; itemId < items.length; itemId++) {
-    const name = nameOf(kind, itemId, currentLang) || "未命名";
-    options.push(`<option value="${itemId}" ${itemId === id ? "selected" : ""}>${itemId} - ${esc(name)}</option>`);
-  }
-  return options.join("");
+  if (!kind) return `<input class="shop-id" data-idx="${index}" type="text" value="${esc(id)}">`;
+  return itemPickerHtml(kind, id, `shop-item-picker-${index}`, `class="shop-id" data-idx="${index}"`, false);
 }
 
 function refreshShopItemOptions(index) {
   const type = document.querySelector(`#shopTable .shop-type[data-idx="${index}"]`);
+  const picker = document.querySelector(`#shopTable .shop-item-picker[data-idx="${index}"]`);
   const id = document.querySelector(`#shopTable .shop-id[data-idx="${index}"]`);
-  if (!type || !id) return;
-  id.innerHTML = shopItemOptions(type.value, id.value);
+  if (!type || !picker || !id) return;
+  picker.innerHTML = shopItemPickerHtml(index, type.value, parseItemPicker(id, shopItemKind(type.value), false) || 0);
 }
 
 function renderShop() {
@@ -1828,7 +1844,7 @@ function renderShop() {
   for (let i = 0; i < len; i++) rows.push({ i, id: ids[i] || 0, buy: buy[i] || 0, max: buyMax[i] || 0, type: type[i] || 0 });
   tbody.innerHTML = rows.map((r) =>
     `<tr><td>${r.i}</td>` +
-    `<td><select class="shop-id" data-idx="${r.i}">${shopItemOptions(r.type, r.id)}</select></td>` +
+    `<td class="shop-item-picker" data-idx="${r.i}">${shopItemPickerHtml(r.i, r.type, r.id)}</td>` +
     `<td><input class="shop-buy" data-idx="${r.i}" type="number" step="1" value="${r.buy}"></td>` +
     `<td><input class="shop-buy-max" data-idx="${r.i}" type="number" step="1" value="${r.max}"></td>` +
     `<td><select class="shop-type" data-idx="${r.i}">${shopTypeOptions(r.type)}</select></td></tr>`
@@ -1847,6 +1863,19 @@ function applyShop() {
   for (const [key, sel] of groups) {
     for (const input of document.querySelectorAll("#shopTable " + sel)) {
       const idx = Number(input.dataset.idx);
+      if (key === "ag_player_daily_shop_id") {
+        const type = document.querySelector(`#shopTable .shop-type[data-idx="${idx}"]`);
+        const kind = type && shopItemKind(type.value);
+        const id = kind
+          ? parseItemPicker(input, kind, false)
+          : /^\d+$/.test(input.value.trim()) ? Number(input.value.trim()) : null;
+        if (id === null) {
+          setStatus("商店物品必须选择当前类型的有效物品或填写有效 ID。", "err");
+          return;
+        }
+        all.push({ key, idx, v: id });
+        continue;
+      }
       const s = input.value.trim();
       const v = s === "" ? 0 : Number(s);
       if (!Number.isInteger(v)) {
