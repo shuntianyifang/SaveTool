@@ -26,6 +26,7 @@ __CSS__
     <button id="btnUndo" disabled title="Ctrl+Z">撤销</button>
     <button id="btnRedo" disabled title="Ctrl+Y">重做</button>
     <button id="btnPack" class="primary" disabled>回包并下载</button>
+    <button id="btnForcePack" class="danger" disabled hidden>强制回包</button>
   </div>
 </header>
 <input type="file" id="fileInput" accept="*/*" hidden>
@@ -33,6 +34,7 @@ __CSS__
 <input type="file" id="loadoutFileInput" accept=".json,application/json" hidden>
 <div class="statusbar">
   <span id="status">请打开存档文件，或直接拖入窗口。</span>
+  <span id="saveSafety" class="save-safety"></span>
   <span id="stats"></span>
 </div>
 <nav class="tabs">

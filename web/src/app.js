@@ -257,7 +257,9 @@ const btnRestore = $("btnRestore");
 const btnUndo = $("btnUndo");
 const btnRedo = $("btnRedo");
 const btnPack = $("btnPack");
+const btnForcePack = $("btnForcePack");
 const statusEl = $("status");
+const saveSafetyEl = $("saveSafety");
 const statsEl = $("stats");
 const searchInput = $("searchInput");
 const langSelect = $("langSelect");
@@ -407,49 +409,86 @@ async function openFile(file) {
   );
 }
 
-async function packSave() {
+async function verifyPackedBytes(bytes, expectedJson) {
+  const roundTripJson = await decryptBytes(bytes);
+  const parsed = JSON.parse(roundTripJson);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("生成文件重新解密后不是有效的存档对象。");
+  }
+  if (roundTripJson !== expectedJson) {
+    throw new Error("生成文件重新解密后的 JSON 与待保存内容不一致。");
+  }
+  return validateSave(parsed);
+}
+
+function confirmForcePack(validation) {
+  const preview = validation.errors.slice(0, 10).map((s, i) => `${i + 1}. ${s}`).join("\n");
+  const more = validation.errors.length > 10
+    ? `\n……另有 ${validation.errors.length - 10} 个错误，完整列表见概览页。`
+    : "";
+  if (!window.confirm(
+    `当前存档有 ${validation.errors.length} 个校验错误。强制回包可能导致游戏无法读取存档。\n\n` +
+    preview + more + "\n\n仍要继续吗？"
+  )) return false;
+  return window.confirm("再次确认：强制回包只应用于你已了解风险的存档。确定继续生成文件吗？");
+}
+
+async function packSave(force) {
   if (!root) return;
   const v = validateSave(root);
   if (v.errors.length) {
-    const ok = window.confirm(
-      "存在 " + v.errors.length + " 个校验错误，仍要回包？\n\n" + v.errors.slice(0, 5).join("\n")
-    );
-    if (!ok) {
-      setStatus("已取消回包。", "err");
+    if (!force) {
+      renderIssues();
+      updateToolbar();
+      setStatus("存在 " + v.errors.length + " 个校验错误，正常回包已禁止。请先修复错误。", "err");
+      return;
+    }
+    if (!confirmForcePack(v)) {
+      setStatus("已取消强制回包。", "err");
       return;
     }
   }
 
-  const json = canonicalJson();
-  JSON.parse(json);
-  const outMode = $("outMode").value;
-  const migration = outMode === "migration" || (outMode === "auto" && currentMode === "migration");
-  const magic = migration ? MIGRATION_MAGIC : SAVE_MAGIC;
-  const aesPurpose = migration ? "POW_MIGRATION_AES_KEY" : "POW_SAVE_AES_KEY";
-  const hmacPurpose = migration ? "POW_MIGRATION_HMAC_KEY" : "POW_SAVE_HMAC_KEY";
+  try {
+    const json = canonicalJson();
+    JSON.parse(json);
+    const outMode = $("outMode").value;
+    const migration = outMode === "migration" || (outMode === "auto" && currentMode === "migration");
+    const magic = migration ? MIGRATION_MAGIC : SAVE_MAGIC;
+    const aesPurpose = migration ? "POW_MIGRATION_AES_KEY" : "POW_SAVE_AES_KEY";
+    const hmacPurpose = migration ? "POW_MIGRATION_HMAC_KEY" : "POW_SAVE_HMAC_KEY";
 
-  const plain = new TextEncoder().encode(json);
-  const iv = crypto.getRandomValues(new Uint8Array(16));
-  const aesKey = await deriveKey(aesPurpose);
-  const hmacKey = await deriveKey(hmacPurpose);
-  const ct = await aesEncrypt(plain, iv, aesKey);
+    const plain = new TextEncoder().encode(json);
+    const iv = crypto.getRandomValues(new Uint8Array(16));
+    const aesKey = await deriveKey(aesPurpose);
+    const hmacKey = await deriveKey(hmacPurpose);
+    const ct = await aesEncrypt(plain, iv, aesKey);
 
-  const header = new Uint8Array(14);
-  for (let i = 0; i < 8; i++) header[i] = magic.charCodeAt(i);
-  header[8] = 1;
-  header[9] = 0x10;
-  new DataView(header.buffer).setUint32(10, ct.length, true);
+    const header = new Uint8Array(14);
+    for (let i = 0; i < 8; i++) header[i] = magic.charCodeAt(i);
+    header[8] = 1;
+    header[9] = 0x10;
+    new DataView(header.buffer).setUint32(10, ct.length, true);
 
-  const body = concatBytes(header, iv, ct);
-  const sig = await hmacBytes(await importHmacKey(hmacKey), body);
-  const out = concatBytes(body, sig);
-  const name = migration ? "render_cache.dat" : "save_file";
-  downloadBytes(out, name);
-  setStatus(
-    "回包成功：" + name + "（" + out.length + " 字节）。" +
-    (v.warnings.length ? " 警告：" + v.warnings.length + " 项。" : ""),
-    "ok"
-  );
+    const body = concatBytes(header, iv, ct);
+    const sig = await hmacBytes(await importHmacKey(hmacKey), body);
+    const out = concatBytes(body, sig);
+    const roundTripValidation = await verifyPackedBytes(out, json);
+    if (!force && roundTripValidation.errors.length) {
+      throw new Error("生成文件重新校验时发现 " + roundTripValidation.errors.length + " 个错误。");
+    }
+
+    const name = migration ? "render_cache.dat" : "save_file";
+    downloadBytes(out, name);
+    setStatus(
+      (force ? "强制回包成功并已通过加密往返验证：" : "回包成功并已通过加密往返验证：") +
+      name + "（" + out.length + " 字节）。" +
+      (v.warnings.length ? " 警告：" + v.warnings.length + " 项。" : ""),
+      force ? "err" : "ok"
+    );
+  } catch (e) {
+    setStatus("回包失败，未下载文件：" + e.message, "err");
+  }
 }
 
 function downloadBackup() {
@@ -905,9 +944,23 @@ function updateHistoryButtons() {
 
 function updateToolbar() {
   const has = !!root;
+  const v = has ? validateSave(root) : { errors: [], warnings: [] };
   btnBackup.disabled = !has;
   btnRestore.disabled = !has;
-  btnPack.disabled = !has;
+  btnPack.disabled = !has || v.errors.length > 0;
+  btnPack.title = v.errors.length
+    ? "存在校验错误，修复后才能正常回包"
+    : "回包并下载";
+  btnForcePack.hidden = !has || v.errors.length === 0;
+  btnForcePack.disabled = !has || v.errors.length === 0;
+  saveSafetyEl.textContent = !has
+    ? ""
+    : v.errors.length
+      ? `禁止正常回包：${v.errors.length} 个错误`
+      : v.warnings.length
+        ? `可回包：${v.warnings.length} 个警告`
+        : "校验通过，可安全回包";
+  saveSafetyEl.className = "save-safety " + (v.errors.length ? "err" : "ok");
   updateHistoryButtons();
 }
 
@@ -2066,7 +2119,8 @@ btnBackup.addEventListener("click", downloadBackup);
 btnRestore.addEventListener("click", restoreOriginal);
 btnUndo.addEventListener("click", undo);
 btnRedo.addEventListener("click", redo);
-btnPack.addEventListener("click", packSave);
+btnPack.addEventListener("click", () => packSave(false));
+btnForcePack.addEventListener("click", () => packSave(true));
 
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", async (e) => {
