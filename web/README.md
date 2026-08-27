@@ -9,6 +9,8 @@
 - 打开 / 回包 `POWSAVE1` 与 `POWMIGR1`，AES-256-CBC + HMAC-SHA256，算法与 Windows 版一致；也支持直接打开明文 JSON。
 - 结构化编辑：
   - 角色：ID、名称、兵种、等级、经验、HP、主武器、编队、锁定、各装备槽等。
+    - 头饰、服装、护甲、特殊槽复用武器配件的可搜索选择框，显示 `ID - 名称`，支持选择候选或直接填写 ID；选择 `0 - 空` 可卸下，点击“应用修改”生效，支持重置表单和撤销/重做。
+    - 穿着候选按游戏数据的槽位类别筛选，拒绝错误类别、越界 ID 和无效文本。当前穿着数据没有本地化名称，按配件相同规则回退显示内部名称（如 `hat_bandana`）；不额外猜测性别、角色模型或其他搭配限制。
   - 武器：ID、装备角色、等级、经验、攻击卡、13 个配件槽，可恢复默认配件。
   - 模块：可选 / 隐藏 / 全部三种查看模式，按模块 ID 编辑数量，支持批量设置，隐藏视图与 Windows 版一致。
   - 概览：玩家名、语言、音量、战斗设置等常用字段。
@@ -36,7 +38,7 @@ python tools/build_web.py
 
 默认读取 `D:\POW\assets`；可用 `--assets` 指定其他目录，`--no-data-file` 不输出 `web_data.json`。
 
-脚本只读取 `item_names.json` / `WpnData.json` / `CharData.json` / `ModulData.json`（存在时优先用 `ModulData_resolved.json` 判断模块可用性），不读取任何图片、音频、动画资源。
+脚本只读取 `item_names.json` / `WpnData.json` / `CharData.json` / `ClothData.json` / `ModulData.json`（存在时优先用 `ModulData_resolved.json` 判断模块可用性），不读取任何图片、音频、动画资源。
 
 ### 维护与回归检查
 
@@ -99,7 +101,7 @@ python tests/run_regression.py
 - 预设库最多 100 条、524,288 个码元（约 1 MiB UTF-16 文本）。过大或损坏的本地预设库停止加载，原内容保留；不会把加载失败当作空库覆盖。保存/导入失败不会报告成功。
 - 以上是确定的数据/快照预算，不是浏览器总内存上限；JavaScript 对象、DOM、原始备份及加解密临时缓冲另占内存，不能保证任何设备都绝不卡顿。
 
-测试：`node tests/check_resources.cjs`、`node tests/check_validation.cjs`、`node tests/check_player_values.cjs`；浏览器回归：`python tests/run_regression.py`（可通过 `--browser` 指定 Chrome）。测试只读本地存档，修改和回包保留在内存/临时目录。
+测试：`node tests/check_resources.cjs`、`node tests/check_validation.cjs`、`node tests/check_player_values.cjs`、`node tests/check_clothing.cjs`；浏览器回归：`python tests/run_regression.py`（可通过 `--browser` 指定 Chrome）。测试只读本地存档，修改和回包保留在内存/临时目录。
 
 - WebCrypto 需要安全上下文：`file://`、`localhost` 或 HTTPS。
 - 浏览器不能直接写手机 App 沙盒，Android / iOS 需要手动复制文件进出。

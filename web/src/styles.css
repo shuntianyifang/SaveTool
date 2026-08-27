@@ -236,6 +236,7 @@ td.num { font-variant-numeric: tabular-nums; }
   #searchInput { width: 100%; }
   .cards { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr; }
+  .field-wide { grid-column: auto; }
 }
 .sub-tabs, .compare-tabs {
   display: flex;

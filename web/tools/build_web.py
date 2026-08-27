@@ -3,7 +3,7 @@
 """Build the offline Web data dictionary and single-file SaveTool.html.
 
 Reads only text/numeric tables from the local reverse-engineering output
-(item names, weapon/character/module stats, default modules). It does not
+(item names, weapon/character/module stats, clothing types, default modules). It does not
 read sprites, icons, audio, or any other art asset, so the final HTML stays
 self-contained and small.
 """
@@ -31,12 +31,13 @@ def load_json(path):
 def build_data(assets_dir):
     wpn = load_json(assets_dir / "il2cpp_dump" / "WpnData.json")
     char = load_json(assets_dir / "il2cpp_dump" / "CharData.json")
+    cloth = load_json(assets_dir / "il2cpp_dump" / "ClothData.json")
     mod_root = load_json(assets_dir / "il2cpp_dump_recursive" / "ModulData.json")
     resolved_mod_path = assets_dir / "il2cpp_dump_recursive" / "ModulData_resolved.json"
     mod_active_root = load_json(resolved_mod_path) if resolved_mod_path.exists() else mod_root
     item_names = load_json(assets_dir / "item_names.json")
 
-    name_types = ("weapon", "character", "module", "card", "mission", "achievement", "campaign", "patch")
+    name_types = ("weapon", "character", "module", "cloth", "card", "mission", "achievement", "campaign", "patch")
     max_ids = {kind: 0 for kind in name_types}
     for entry in item_names:
         item_type = entry.get("item_type")
@@ -64,6 +65,7 @@ def build_data(assets_dir):
     mods = mod_root["mod"]
     mod_active_list = mod_active_root["mod"]
     module_count = len(mods)
+    cloth_prefix = unwrap(cloth["cloth_prefix"])
 
     web_data = {
         "version": 1,
@@ -85,10 +87,17 @@ def build_data(assets_dir):
             "prefix": [m.get("prefix") or "" for m in mods],
             "active": [bool(m.get("active")) for m in mod_active_list],
         },
+        "cloth": {
+            "prefix": cloth_prefix,
+            "type": unwrap(cloth["cloth_type"]),
+        },
         "names": {
             "weapon": _empty_names(weapon_count),
             "character": _empty_names(char_count),
             "module": _empty_names(module_count),
+            # Current game tables have no localized clothing names. The UI
+            # falls back to the prefix, just as it does for unnamed modules.
+            "cloth": _empty_names(len(cloth_prefix)),
             "card": _empty_names(max_ids["card"] + 1),
             "mission": _empty_names(max_ids["mission"] + 1),
             "achievement": _empty_names(max_ids["achievement"] + 1),
@@ -151,6 +160,7 @@ def build(assets_dir, write_data_file=True):
     print("weapons:       {} entries".format(len(wpn["prefix"])))
     print("characters:    {} entries".format(len(ch["prefix"])))
     print("modules:       {} entries".format(len(mod["prefix"])))
+    print("clothing:      {} entries".format(len(web_data["cloth"]["prefix"])))
     print("names:         {} entries".format(
         sum(len(web_data["names"][kind]["en"]) for kind in web_data["names"])
     ))

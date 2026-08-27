@@ -108,10 +108,10 @@ const CHAR_FIELDS = [
   { key: "ag_inv_char_slot_card_class", label: "兵种卡槽", type: "int" },
   { key: "ag_inv_char_num_formation", label: "编队", type: "int" },
   { key: "ag_inv_char_lock", label: "锁定", type: "bool" },
-  { key: "ag_inv_char_slot_head", label: "头饰槽", type: "int" },
-  { key: "ag_inv_char_slot_cloth", label: "服装槽", type: "int" },
-  { key: "ag_inv_char_slot_armor", label: "护甲槽", type: "int" },
-  { key: "ag_inv_char_slot_special", label: "特殊槽", type: "int" },
+  { key: "ag_inv_char_slot_head", label: "头饰槽", type: "int", picker: "cloth", itemType: "hats" },
+  { key: "ag_inv_char_slot_cloth", label: "服装槽", type: "int", picker: "cloth", itemType: "uniforms" },
+  { key: "ag_inv_char_slot_armor", label: "护甲槽", type: "int", picker: "cloth", itemType: "armors" },
+  { key: "ag_inv_char_slot_special", label: "特殊槽", type: "int", picker: "cloth", itemType: "special" },
   { key: "ag_inv_char_slot_action", label: "动作槽", type: "int" },
   { key: "ag_inv_char_weight", label: "负重", type: "int" },
   { key: "ag_inv_char_usability", label: "状态", type: "int" },
@@ -960,7 +960,7 @@ function itemPickerLabel(kind, id, allowZero) {
   return `${id} - ${nameOf(kind, id, currentLang) || "未命名"}`;
 }
 
-function itemPickerHtml(kind, id, listId, attributes, allowZero) {
+function itemPickerHtml(kind, id, listId, attributes, allowZero, itemType) {
   const items = DATA && DATA[kind] && DATA[kind].prefix ? DATA[kind].prefix : [];
   if (items.length > MAX_RENDER_ARRAY) {
     return `<span>物品字典超过 ${MAX_RENDER_ARRAY} 项显示上限，已停止生成选项。</span>`;
@@ -968,6 +968,7 @@ function itemPickerHtml(kind, id, listId, attributes, allowZero) {
   const options = [];
   if (allowZero) options.push(`<option value="0 - 空"></option>`);
   for (let itemId = 1; itemId < items.length; itemId++) {
+    if (itemType && DATA[kind].type?.[itemId] !== itemType) continue;
     options.push(`<option value="${esc(itemPickerLabel(kind, itemId, false))}"></option>`);
   }
   const valid = (allowZero && id === 0) || (id >= 1 && id < items.length);
@@ -976,13 +977,14 @@ function itemPickerHtml(kind, id, listId, attributes, allowZero) {
     `<datalist id="${listId}">${options.join("")}</datalist>`;
 }
 
-function parseItemPicker(input, kind, allowZero) {
+function parseItemPicker(input, kind, allowZero, itemType) {
   const value = input.value.trim();
   if (allowZero && (value === "0" || value === "0 - 空")) return 0;
   if (!/^\d+$/.test(value) && !/^\d+\s+-\s+.+$/.test(value)) return null;
   const id = Number(value.match(/^\d+/)[0]);
   const items = DATA && DATA[kind] && DATA[kind].prefix ? DATA[kind].prefix : [];
   if (!Number.isInteger(id) || id < 1 || id >= items.length) return null;
+  if (itemType && DATA[kind].type?.[id] !== itemType) return null;
   return value === String(id) || value === itemPickerLabel(kind, id, false) ? id : null;
 }
 
@@ -1011,7 +1013,14 @@ function renderDetail() {
     } else {
       val = getVal(f.key, slot);
     }
-    html += `<label class="field${f.type === "vec4" ? " field-wide" : ""}"><span>${f.label}</span>${inputHtml(f, val)}</label>`;
+    const input = f.picker
+      ? itemPickerHtml(f.picker, val ?? 0, `cloth-picker-${f.itemType}`, `data-field="${f.key}"`, true, f.itemType)
+      : inputHtml(f, val);
+    html += `<label class="field${f.type === "vec4" || f.picker ? " field-wide" : ""}"><span>${f.label}</span>${input}</label>`;
+  }
+
+  if (kind === "characters") {
+    html += `<div class="muted field-wide">穿着槽支持按 ID / 名称搜索，也可直接填写 ID；选择“0 - 空”卸下。候选按槽位分类，无本地化名称时显示内部名称。点击“应用修改”后生效。</div>`;
   }
 
   if (kind === "weapons") {
@@ -1200,6 +1209,9 @@ const SAVE_SCHEMA = (() => {
   }
   for (const key of ["ag_inv_char_id", "ag_inv_wpn_id"]) {
     Object.assign(schema[key], { min: 0, table: key === "ag_inv_char_id" ? "character" : "weapon" });
+  }
+  for (const f of CHAR_FIELDS.filter((field) => field.picker)) {
+    Object.assign(schema[f.key], { min: 0, table: f.picker });
   }
   for (const key of ["ag_inv_char_first_weapon", "ag_inv_wpn_to_char"]) {
     Object.assign(schema[key], { min: 0, max: INVENTORY_LEN - 1 });
@@ -1719,7 +1731,12 @@ function applyDetail() {
     values.count = readNum("count");
   } else if (kind === "characters") {
     for (const f of CHAR_FIELDS) {
-      if (f.type === "bool") values[f.key] = readBool(f.key);
+      if (f.picker) {
+        const el = form.querySelector(`[data-field="${f.key}"]`);
+        const id = el ? parseItemPicker(el, f.picker, true, f.itemType) : null;
+        if (id === null) errors.push(f.label + " 必须选择该槽位的有效穿着物品或填写有效 ID（0 为空）。");
+        values[f.key] = id;
+      } else if (f.type === "bool") values[f.key] = readBool(f.key);
       else if (f.type === "text") values[f.key] = readText(f.key);
       else if (f.type === "vec4") {
         values[f.key] = {
