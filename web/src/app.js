@@ -4,6 +4,15 @@ const SAVE_MAGIC = "POWSAVE1";
 const MIGRATION_MAGIC = "POWMIGR1";
 const MASTER = hexToBytes("71A42C19D3588EB14FC625906D33FA07C25BE841169D74AB38F063CE8512D74A");
 const MAX_HISTORY = 40;
+const MAX_HISTORY_BYTES = 16 * 1024 * 1024;
+const MAX_SAVE_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_JSON_CHARS = 4 * 1024 * 1024;
+const MAX_PRESET_FILE_BYTES = 256 * 1024;
+const MAX_PRESET_JSON_CHARS = 128 * 1024;
+const MAX_PRESET_LIBRARY_CHARS = 512 * 1024;
+const MAX_PRESETS = 100;
+const MAX_RENDER_ARRAY = 1000;
+const MAX_VISIBLE_ISSUES = 100;
 const PAGE_SIZE = 100;
 const INVENTORY_LEN = 1000;
 const LANGS = ["en", "ru", "zh", "ko"];
@@ -262,6 +271,9 @@ let currentFileName = "";
 let currentMode = "save";
 let undoStack = [];
 let redoStack = [];
+let historySequence = 0;
+let historyTrimmed = false;
+let fileOperationBusy = false;
 let selected = { kind: "characters", slot: -1 };
 let activeTab = "overview";
 let listKind = "characters";
@@ -338,6 +350,36 @@ function setStatus(msg, kind) {
   statusEl.className = kind === "ok" ? "ok" : (kind === "err" ? "err" : "");
 }
 
+function assertFileSize(file, maxBytes, label) {
+  if (!file || !Number.isSafeInteger(file.size) || file.size < 0 || file.size > maxBytes) {
+    throw new Error(`${label}超过大小上限 ${maxBytes / 1024 / 1024} MiB，未读取文件。`);
+  }
+}
+
+function parseBoundedJson(text, maxChars = MAX_JSON_CHARS) {
+  if (typeof text !== "string" || text.length > maxChars) {
+    throw new Error(`JSON 文本超过 ${maxChars} 字符上限，未解析或替换当前内容。`);
+  }
+  return JSON.parse(text);
+}
+
+async function withFileOperation(action) {
+  if (fileOperationBusy) throw new Error("正在读取或回包文件，请等待当前操作完成。");
+  fileOperationBusy = true;
+  try { return await action(); }
+  finally { fileOperationBusy = false; }
+}
+
+async function readSaveJson(file) {
+  assertFileSize(file, MAX_SAVE_FILE_BYTES, "存档文件");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.byteLength > MAX_SAVE_FILE_BYTES) throw new Error("实际文件内容超过 8 MiB 上限。");
+  const magic = bytesToAscii(bytes.slice(0, 8));
+  const encrypted = magic === SAVE_MAGIC || magic === MIGRATION_MAGIC;
+  const json = encrypted ? await decryptBytes(bytes) : new TextDecoder().decode(bytes);
+  return { bytes, magic, encrypted, parsed: parseBoundedJson(json) };
+}
+
 async function importHmacKey(bytes) {
   return crypto.subtle.importKey("raw", bytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
 }
@@ -376,6 +418,7 @@ function downloadBytes(bytes, name) {
 }
 
 async function decryptBytes(bytes) {
+  if (bytes.byteLength > MAX_SAVE_FILE_BYTES) throw new Error("加密文件超过 8 MiB 上限，未解密。");
   const magic = bytesToAscii(bytes.slice(0, 8));
   const isMigration = magic === MIGRATION_MAGIC;
   if (magic !== SAVE_MAGIC && !isMigration) throw new Error("无法识别的魔数：" + magic);
@@ -400,28 +443,21 @@ async function decryptBytes(bytes) {
 }
 
 async function openFile(file) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let json;
-  const magic = bytesToAscii(bytes.slice(0, 8));
-  if (magic === SAVE_MAGIC || magic === MIGRATION_MAGIC) {
-    json = await decryptBytes(bytes);
-  } else {
-    json = new TextDecoder().decode(bytes);
-    JSON.parse(json);
-  }
+  return withFileOperation(() => openFileInternal(file));
+}
 
-  const parsed = JSON.parse(json);
+async function openFileInternal(file) {
+  const { bytes, magic, encrypted, parsed } = await readSaveJson(file);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("存档 JSON 必须是对象。");
   }
   assertSaveValid(parsed);
   currentMode = magic === MIGRATION_MAGIC || isMigrationMetadata(parsed) ? "migration" : "save";
-  originalBytes = magic === SAVE_MAGIC || magic === MIGRATION_MAGIC ? bytes : null;
+  originalBytes = encrypted ? bytes : null;
   root = parsed;
   originalJson = canonicalJson();
   currentFileName = file.name;
-  undoStack = [];
-  redoStack = [];
+  clearHistory();
   page = 0;
   selected = { kind: "characters", slot: -1 };
 
@@ -438,7 +474,7 @@ async function openFile(file) {
 
 async function verifyPackedBytes(bytes, expectedJson) {
   const roundTripJson = await decryptBytes(bytes);
-  const parsed = JSON.parse(roundTripJson);
+  const parsed = parseBoundedJson(roundTripJson);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("生成文件重新解密后不是有效的存档对象。");
   }
@@ -461,6 +497,11 @@ function confirmForcePack(validation) {
 }
 
 async function packSave(force) {
+  try { return await withFileOperation(() => packSaveInternal(force)); }
+  catch (e) { setStatus(e.message, "err"); }
+}
+
+async function packSaveInternal(force) {
   if (!root) return;
   const v = validateSave(root);
   if (v.errors.length) {
@@ -478,7 +519,7 @@ async function packSave(force) {
 
   try {
     const json = canonicalJson();
-    JSON.parse(json);
+    parseBoundedJson(json);
     const outMode = $("outMode").value;
     if (isMigrationMetadata(root) && outMode === "save") {
       throw new Error("迁移元数据不能作为普通游戏存档导出，请选择自动或迁移格式。");
@@ -489,6 +530,8 @@ async function packSave(force) {
     const hmacPurpose = migration ? "POW_MIGRATION_HMAC_KEY" : "POW_SAVE_HMAC_KEY";
 
     const plain = new TextEncoder().encode(json);
+    // 62-byte container overhead plus up to 16 bytes of CBC padding.
+    if (plain.byteLength > MAX_SAVE_FILE_BYTES - 78) throw new Error("回包结果将超过 8 MiB 上限，未生成文件。");
     const iv = crypto.getRandomValues(new Uint8Array(16));
     const aesKey = await deriveKey(aesPurpose);
     const hmacKey = await deriveKey(hmacPurpose);
@@ -550,16 +593,48 @@ function canonicalJson() {
   return JSON.stringify(root);
 }
 
+function clearHistory() {
+  undoStack = [];
+  redoStack = [];
+  historyTrimmed = false;
+  historySequence = 0;
+}
+
+function historyBytes() {
+  return [...undoStack, ...redoStack].reduce((total, entry) => total + entry.bytes, 0);
+}
+
+function historyEntry(label) {
+  const json = canonicalJson();
+  const bytes = json.length * 2 + label.length * 2 + 64;
+  if (json.length > MAX_JSON_CHARS || bytes > MAX_HISTORY_BYTES) {
+    const message = "当前内容过大，无法建立撤销快照；此次修改未执行。请先导出备份。";
+    setStatus(message, "err");
+    throw new Error(message);
+  }
+  return { label, json, bytes, sequence: ++historySequence };
+}
+
+function trimHistory() {
+  while (undoStack.length + redoStack.length > MAX_HISTORY || historyBytes() > MAX_HISTORY_BYTES) {
+    const oldest = !redoStack.length || (undoStack.length && undoStack[0].sequence < redoStack[0].sequence)
+      ? undoStack : redoStack;
+    oldest.shift();
+    historyTrimmed = true;
+  }
+}
+
 function pushHistory(label) {
   if (!root) return;
-  undoStack.push({ label: label || "编辑", json: canonicalJson() });
-  if (undoStack.length > MAX_HISTORY) undoStack.shift();
+  const entry = historyEntry(label || "编辑");
   redoStack = [];
+  undoStack.push(entry);
+  trimHistory();
   updateHistoryButtons();
 }
 
 function applyJson(json) {
-  root = JSON.parse(json);
+  root = parseBoundedJson(json);
   selected = { kind: listKind, slot: -1 };
   page = 0;
   renderAll();
@@ -567,22 +642,50 @@ function applyJson(json) {
 
 function undo() {
   if (!undoStack.length) return;
-  redoStack.push({ label: "撤销", json: canonicalJson() });
+  const entry = historyEntry("撤销");
   const s = undoStack.pop();
+  redoStack.push(entry);
+  trimHistory();
   applyJson(s.json);
   setStatus("已撤销：" + s.label, "ok");
 }
 
 function redo() {
   if (!redoStack.length) return;
-  undoStack.push({ label: "重做", json: canonicalJson() });
+  const entry = historyEntry("重做");
   const s = redoStack.pop();
+  undoStack.push(entry);
+  trimHistory();
   applyJson(s.json);
   setStatus("已重做：" + s.label, "ok");
 }
 
 function getArr(key) {
-  return root && Array.isArray(root[key]) ? root[key] : null;
+  return getRenderArray(root, key);
+}
+
+function renderArrayLimit(key) {
+  return Math.min(MAX_RENDER_ARRAY, SAVE_SCHEMA[key]?.length ?? SAVE_SCHEMA[key]?.maxLength ?? MAX_RENDER_ARRAY);
+}
+
+function getRenderArray(obj, key) {
+  const arr = obj && Array.isArray(obj[key]) ? obj[key] : null;
+  if (arr && arr.length > renderArrayLimit(key)) {
+    setStatus(`${key} 长度 ${arr.length} 超过显示上限 ${renderArrayLimit(key)}，已停止显示；原始数据未截断。`, "err");
+    return null;
+  }
+  return arr;
+}
+
+function showArrayRenderLimit(element, keys, columns = 0) {
+  const oversized = keys.filter((key) => root && Array.isArray(root[key]) && root[key].length > renderArrayLimit(key));
+  if (!oversized.length) return false;
+  const message = oversized.join("、") + " 超过显示长度上限，已停止渲染；原始数据未截断，请撤销或重新打开有效存档。";
+  element.innerHTML = columns
+    ? `<tr><td class="empty" colspan="${columns}">${esc(message)}</td></tr>`
+    : `<div class="detail-empty">${esc(message)}</div>`;
+  setStatus(message, "err");
+  return true;
 }
 
 function getVal(key, i) {
@@ -610,9 +713,14 @@ function defaultForArr(key, arr) {
 
 function setArrVal(key, i, v, len) {
   const isNew = !Array.isArray(root[key]);
-  let arr = root[key];
-  if (isNew) arr = root[key] = [];
+  const arr = isNew ? [] : root[key];
   const target = Math.max(i + 1, arr.length, isNew ? (SAVE_SCHEMA[key]?.length ?? len ?? 0) : 0);
+  if (!Number.isSafeInteger(i) || i < 0 || !Number.isSafeInteger(target) || target > renderArrayLimit(key)) {
+    const message = `${key} 下标或目标数组长度超限，未扩展数组。`;
+    setStatus(message, "err");
+    throw new Error(message);
+  }
+  if (isNew) root[key] = arr;
   while (arr.length < target) arr.push(defaultForArr(key, arr));
   arr[i] = v;
 }
@@ -674,6 +782,11 @@ function weaponNameAt(slot) {
 
 function buildRows(kind) {
   const rows = [];
+  const key = kind === "characters" ? "ag_inv_char_id" : kind === "weapons" ? "ag_inv_wpn_id" : "ag_inv_modul_count";
+  if (root && Array.isArray(root[key]) && root[key].length > renderArrayLimit(key)) {
+    getArr(key); // Report the refusal instead of silently showing a truncated inventory.
+    return rows;
+  }
   const arrLen = (getArr("ag_inv_char_id") || []).length || INVENTORY_LEN;
   const len = kind === "modules" && DATA && DATA.module
     ? Math.min(arrLen, DATA.module.prefix.length)
@@ -810,6 +923,8 @@ function renderTable() {
   }
   const cols = TABLE_COLS[listKind];
   head.innerHTML = "<tr>" + cols.map((c) => `<th>${c.label}</th>`).join("") + "</tr>";
+  if (showArrayRenderLimit(body, listKind === "characters" ? CHAR_COPY_KEYS
+    : listKind === "weapons" ? WEAPON_COPY_KEYS : ["ag_inv_modul_count"], cols.length)) return;
   const all = buildRows(listKind).filter(matchesFilter);
   const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
   if (page >= totalPages) page = totalPages - 1;
@@ -847,6 +962,9 @@ function itemPickerLabel(kind, id, allowZero) {
 
 function itemPickerHtml(kind, id, listId, attributes, allowZero) {
   const items = DATA && DATA[kind] && DATA[kind].prefix ? DATA[kind].prefix : [];
+  if (items.length > MAX_RENDER_ARRAY) {
+    return `<span>物品字典超过 ${MAX_RENDER_ARRAY} 项显示上限，已停止生成选项。</span>`;
+  }
   const options = [];
   if (allowZero) options.push(`<option value="0 - 空"></option>`);
   for (let itemId = 1; itemId < items.length; itemId++) {
@@ -964,13 +1082,18 @@ function renderIssues() {
   ];
   el.innerHTML = items.length
     ? `<h3>校验结果（${v.errors.length} 错误 / ${v.warnings.length} 警告）</h3><ul>` +
-      items.map((i) => `<li class="${i.cls}">${esc(i.s)}</li>`).join("") + "</ul>"
+      items.slice(0, MAX_VISIBLE_ISSUES).map((i) => `<li class="${i.cls}">${esc(i.s)}</li>`).join("") + "</ul>" +
+      (items.length > MAX_VISIBLE_ISSUES ? `<p>仅显示前 ${MAX_VISIBLE_ISSUES} 项，共 ${items.length} 项；修复后重新校验。</p>` : "")
     : `<div class="ok-line">校验通过，未发现结构问题。</div>`;
 }
 
 function updateHistoryButtons() {
   btnUndo.disabled = !undoStack.length;
   btnRedo.disabled = !redoStack.length;
+  $("historyInfo").textContent = root
+    ? `历史 ${undoStack.length + redoStack.length}/${MAX_HISTORY} 条 · ${(historyBytes() / 1024 / 1024).toFixed(1)}/16 MiB` +
+      (historyTrimmed ? "（已释放较早记录）" : "")
+    : "";
 }
 
 function updateToolbar() {
@@ -1379,19 +1502,23 @@ function resetMods() {
 function loadPresets() {
   try {
     const raw = localStorage.getItem(PRESET_KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
+    const arr = raw ? parseBoundedJson(raw, MAX_PRESET_LIBRARY_CHARS) : [];
+    if (!Array.isArray(arr) || arr.length > MAX_PRESETS || !arr.every(validatePreset)) {
+      throw new Error(`预设库格式无效或超过 ${MAX_PRESETS} 条上限。`);
+    }
+    return arr;
   } catch (e) {
-    return [];
+    throw new Error("预设库无法加载，原数据保留且不会被覆盖：" + e.message);
   }
 }
 
 function savePresets(list) {
-  try {
-    localStorage.setItem(PRESET_KEY, JSON.stringify(list));
-  } catch (e) {
-    setStatus("预设库保存失败：" + e.message, "err");
+  if (!Array.isArray(list) || list.length > MAX_PRESETS || !list.every(validatePreset)) {
+    throw new Error(`预设库格式无效或超过 ${MAX_PRESETS} 条上限，未保存。`);
   }
+  const json = JSON.stringify(list);
+  if (json.length > MAX_PRESET_LIBRARY_CHARS) throw new Error("预设库超过约 1 MiB 文本内存上限，原数据未改动。");
+  localStorage.setItem(PRESET_KEY, json);
 }
 
 function validatePreset(p) {
@@ -1417,7 +1544,9 @@ function currentLoadout() {
 function renderLoadoutPresets() {
   const el = $("loadoutPresets");
   if (!el) return;
-  const presets = loadPresets();
+  let presets;
+  try { presets = loadPresets(); }
+  catch (e) { el.textContent = e.message; setStatus(e.message, "err"); return; }
   el.innerHTML = presets.length
     ? `<div class="preset-title">预设库</div>` + presets.map((p, i) =>
         `<div class="preset-row"><span>${esc(p.name || p.weaponName || "预设 " + (i + 1))}</span>` +
@@ -1433,16 +1562,20 @@ function saveLoadout() {
   const name = window.prompt("预设名称：", preset.weaponName || "武器 " + selected.slot);
   if (name === null) return;
   preset.name = name.trim() || ("武器 " + selected.slot);
-  const list = loadPresets();
-  list.push(preset);
-  savePresets(list);
+  try {
+    const list = loadPresets();
+    list.push(preset);
+    savePresets(list);
+  } catch (e) { setStatus("保存预设失败：" + e.message, "err"); return; }
   renderLoadoutPresets();
   setStatus("已保存预设：" + preset.name, "ok");
 }
 
 function usePreset(index) {
   if (!root || listKind !== "weapons" || selected.slot < 0) return;
-  const presets = loadPresets();
+  let presets;
+  try { presets = loadPresets(); }
+  catch (e) { setStatus(e.message, "err"); return; }
   const p = presets[index];
   if (!p || !validatePreset(p)) {
     setStatus("预设数据无效。", "err");
@@ -1457,12 +1590,15 @@ function usePreset(index) {
 }
 
 function deletePreset(index) {
-  const presets = loadPresets();
+  let presets;
+  try { presets = loadPresets(); }
+  catch (e) { setStatus(e.message, "err"); return; }
   const p = presets[index];
   if (!p) return;
   if (!window.confirm("删除预设：" + (p.name || "预设 " + (index + 1)) + "？")) return;
   presets.splice(index, 1);
-  savePresets(presets);
+  try { savePresets(presets); }
+  catch (e) { setStatus("删除预设失败：" + e.message, "err"); return; }
   renderLoadoutPresets();
   setStatus("已删除预设。", "ok");
 }
@@ -1477,8 +1613,14 @@ function exportLoadout() {
 }
 
 async function importLoadoutFile(file) {
+  try { return await withFileOperation(() => importLoadoutFileInternal(file)); }
+  catch (e) { setStatus("导入预设失败：" + e.message, "err"); }
+}
+
+async function importLoadoutFileInternal(file) {
   try {
-    const p = JSON.parse(await file.text());
+    assertFileSize(file, MAX_PRESET_FILE_BYTES, "预设文件");
+    const p = parseBoundedJson(await file.text(), MAX_PRESET_JSON_CHARS);
     if (!validatePreset(p)) throw new Error("预设需要包含 13 个配件 ID 的 mods 数组。");
     const list = loadPresets();
     list.push(p);
@@ -1661,7 +1803,7 @@ function applyOverview() {
 
 function parseRaw() {
   try {
-    const parsed = JSON.parse($("rawArea").value);
+    const parsed = parseBoundedJson($("rawArea").value);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("必须是一个 JSON 对象。");
     }
@@ -1683,7 +1825,9 @@ function syncRaw() {
 
 function formatRaw() {
   try {
-    $("rawArea").value = JSON.stringify(JSON.parse($("rawArea").value), null, 2);
+    const formatted = JSON.stringify(parseBoundedJson($("rawArea").value), null, 2);
+    if (formatted.length > MAX_JSON_CHARS) throw new Error("格式化后的文本超过长度上限，保留原文本。");
+    $("rawArea").value = formatted;
     setStatus("已格式化 JSON。", "ok");
   } catch (e) {
     setStatus("格式化失败：" + e.message, "err");
@@ -1691,20 +1835,15 @@ function formatRaw() {
 }
 
 function getArrIn(rootObj, key) {
-  return rootObj && Array.isArray(rootObj[key]) ? rootObj[key] : null;
+  return getRenderArray(rootObj, key);
 }
 
 async function loadCompareFile(file) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let json;
-  const magic = bytesToAscii(bytes.slice(0, 8));
-  if (magic === SAVE_MAGIC || magic === MIGRATION_MAGIC) {
-    json = await decryptBytes(bytes);
-  } else {
-    json = new TextDecoder().decode(bytes);
-    JSON.parse(json);
-  }
-  const parsed = JSON.parse(json);
+  return withFileOperation(() => loadCompareFileInternal(file));
+}
+
+async function loadCompareFileInternal(file) {
+  const { parsed } = await readSaveJson(file);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("对比存档 JSON 必须是对象。");
   }
@@ -1858,6 +1997,7 @@ function arrayEditorHtml(key, row) {
 
 function renderIntArrayRows(tableId, key, search, nameType) {
   const tbody = document.querySelector("#" + tableId + " tbody");
+  if (showArrayRenderLimit(tbody, [key], 3)) return;
   if (!root) {
     tbody.innerHTML = `<tr><td class="empty" colspan="3">请先打开存档。</td></tr>`;
     return;
@@ -1871,6 +2011,7 @@ function renderIntArrayRows(tableId, key, search, nameType) {
 
 function renderIntArraySimple(tableId, key, search) {
   const tbody = document.querySelector("#" + tableId + " tbody");
+  if (showArrayRenderLimit(tbody, [key], 2)) return;
   if (!root) {
     tbody.innerHTML = `<tr><td class="empty" colspan="2">请先打开存档。</td></tr>`;
     return;
@@ -1949,6 +2090,7 @@ function missionBatch() {
 
 function renderCards() {
   const tbody = document.querySelector("#cardTable tbody");
+  if (showArrayRenderLimit(tbody, ["ag_inv_card_own", "ag_inv_card_card_count_use"], 4)) return;
   if (!root) {
     tbody.innerHTML = `<tr><td class="empty" colspan="4">请先打开存档。</td></tr>`;
     return;
@@ -2011,6 +2153,7 @@ function applyCards() {
 
 function renderPlayerValuesForm() {
   const form = $("playerValuesForm");
+  if (showArrayRenderLimit(form, ["ag_player_values"])) return;
   const arr = getArr("ag_player_values") || [];
   const labelFor = (i) => AG_PLAYER_VALUE_LABELS.get(i) || `value[${i}]`;
   form.innerHTML = arr.map((v, i) =>
@@ -2103,6 +2246,7 @@ function refreshShopItemOptions(index) {
 
 function renderShop() {
   const tbody = document.querySelector("#shopTable tbody");
+  if (showArrayRenderLimit(tbody, ["ag_player_daily_shop_id", "ag_player_daily_shop_buy", "ag_player_daily_shop_buy_max", "ag_player_daily_shop_type"], 5)) return;
   const ids = getArr("ag_player_daily_shop_id") || [];
   const buy = getArr("ag_player_daily_shop_buy") || [];
   const buyMax = getArr("ag_player_daily_shop_buy_max") || [];
@@ -2166,6 +2310,7 @@ function renderMiscTab() {
   ).join("");
   renderIntArraySimple("miscTable", miscKey, $("miscSearch").value);
   const form = $("formationNamesForm");
+  if (showArrayRenderLimit(form, ["ag_formation_preset_name"])) return;
   const arr = getArr("ag_formation_preset_name") || [];
   form.innerHTML = arr.map((v, i) =>
     `<label class="field"><span>编队 ${i + 1}</span>` +
