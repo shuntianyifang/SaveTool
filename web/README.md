@@ -38,6 +38,24 @@ python tools/build_web.py
 
 脚本只读取 `item_names.json` / `WpnData.json` / `CharData.json` / `ModulData.json`（存在时优先用 `ModulData_resolved.json` 判断模块可用性），不读取任何图片、音频、动画资源。
 
+### 维护与回归检查
+
+功能修改只编辑 `src/` 中的源码，不直接修改生成的 `SaveTool.html`。玩家数值用途标签由 `src/app.js` 中的 `AG_PLAYER_VALUES_KEYS` / `AG_PLAYER_VALUE_LABELS` 定义；未命名或未知下标显示 `value[i]`。
+
+修改前先检查成品与源码是否一致。如果检查失败，先查看差异，将仅存在于 HTML 中的用户修改迁回源码，避免构建覆盖它们。修改源码并重新构建后，再运行同一检查：
+
+```powershell
+node tests/check_player_values.cjs
+```
+
+该检查不需要浏览器或真实存档，会核对 HTML 与源码同步、用途标签、未知下标回退、输入值和下标关联。完整浏览器回归另用：
+
+```powershell
+python tests/run_regression.py
+```
+
+完整回归需要本机 Edge/Chrome 和脚本指定的存档样本；标签断言使用内存中的测试数值，不会写回原存档。
+
 ## 使用
 
 1. 打开 `SaveTool.html`。
