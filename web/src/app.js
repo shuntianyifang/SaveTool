@@ -48,6 +48,7 @@ const DEFAULT_FILTER = { characters: "nonempty", weapons: "nonempty", modules: "
 
 const TEXT_KEYS = new Set([
   "ag_inv_char_name",
+  "ag_inv_char_like_wpn",
   "ag_inv_char_class",
   "ag_inv_char_head",
   "ag_inv_char_hair",
@@ -107,9 +108,9 @@ const CHAR_FIELDS = [
   { key: "ag_inv_char_usability", label: "状态", type: "int" },
   { key: "ag_inv_char_kills", label: "击杀", type: "int" },
   { key: "ag_inv_char_love", label: "好感", type: "int" },
-  { key: "ag_inv_defend_time", label: "防守时间", type: "int" },
-  { key: "ag_inv_defend_reload_time", label: "防守装填时间", type: "int" },
-  { key: "ag_inv_char_like_wpn", label: "喜好武器", type: "int" },
+  { key: "ag_inv_defend_time", label: "防守时间", type: "float" },
+  { key: "ag_inv_defend_reload_time", label: "防守装填时间", type: "float" },
+  { key: "ag_inv_char_like_wpn", label: "喜好武器", type: "text" },
   { key: "ag_inv_hair_color", label: "头发颜色", type: "vec4" },
   { key: "ag_inv_char_head", label: "头部模型", type: "text" },
   { key: "ag_inv_char_hair", label: "头发模型", type: "text" },
@@ -404,19 +405,18 @@ async function openFile(file) {
   const magic = bytesToAscii(bytes.slice(0, 8));
   if (magic === SAVE_MAGIC || magic === MIGRATION_MAGIC) {
     json = await decryptBytes(bytes);
-    currentMode = magic === MIGRATION_MAGIC ? "migration" : "save";
-    originalBytes = bytes;
   } else {
     json = new TextDecoder().decode(bytes);
     JSON.parse(json);
-    currentMode = "save";
-    originalBytes = null;
   }
 
   const parsed = JSON.parse(json);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("存档 JSON 必须是对象。");
   }
+  assertSaveValid(parsed);
+  currentMode = magic === MIGRATION_MAGIC || isMigrationMetadata(parsed) ? "migration" : "save";
+  originalBytes = magic === SAVE_MAGIC || magic === MIGRATION_MAGIC ? bytes : null;
   root = parsed;
   originalJson = canonicalJson();
   currentFileName = file.name;
@@ -480,7 +480,10 @@ async function packSave(force) {
     const json = canonicalJson();
     JSON.parse(json);
     const outMode = $("outMode").value;
-    const migration = outMode === "migration" || (outMode === "auto" && currentMode === "migration");
+    if (isMigrationMetadata(root) && outMode === "save") {
+      throw new Error("迁移元数据不能作为普通游戏存档导出，请选择自动或迁移格式。");
+    }
+    const migration = outMode === "migration" || (outMode === "auto" && (currentMode === "migration" || isMigrationMetadata(root)));
     const magic = migration ? MIGRATION_MAGIC : SAVE_MAGIC;
     const aesPurpose = migration ? "POW_MIGRATION_AES_KEY" : "POW_SAVE_AES_KEY";
     const hmacPurpose = migration ? "POW_MIGRATION_HMAC_KEY" : "POW_SAVE_HMAC_KEY";
@@ -588,6 +591,7 @@ function getVal(key, i) {
 }
 
 function defaultValueFor(key) {
+  if (SAVE_SCHEMA[key]?.type === "bool") return false;
   if (TEXT_KEYS.has(key)) return "";
   if (BOOL_KEYS.has(key)) return false;
   if (key === "ag_inv_hair_color") return { x: 0, y: 0, z: 0, w: 1 };
@@ -608,7 +612,7 @@ function setArrVal(key, i, v, len) {
   const isNew = !Array.isArray(root[key]);
   let arr = root[key];
   if (isNew) arr = root[key] = [];
-  const target = Math.max(i + 1, arr.length, isNew && len ? len : 0);
+  const target = Math.max(i + 1, arr.length, isNew ? (SAVE_SCHEMA[key]?.length ?? len ?? 0) : 0);
   while (arr.length < target) arr.push(defaultForArr(key, arr));
   arr[i] = v;
 }
@@ -986,7 +990,7 @@ function updateToolbar() {
       ? `禁止正常回包：${v.errors.length} 个错误`
       : v.warnings.length
         ? `可回包：${v.warnings.length} 个警告`
-        : "校验通过，可安全回包";
+        : "已通过现有校验，可回包";
   saveSafetyEl.className = "save-safety " + (v.errors.length ? "err" : "ok");
   updateHistoryButtons();
 }
@@ -1040,12 +1044,172 @@ function switchTab(tab) {
   }
 }
 
+// Known fields follow the bundled editor definitions and the local 1035 save fixtures.
+// Unknown/version-specific fields are preserved, bounded, and reported, not guessed.
+const SAVE_SCHEMA = (() => {
+  const schema = Object.create(null);
+  const add = (keys, rule) => {
+    for (const key of keys.split(/\s+/)) schema[key] = { ...rule };
+  };
+  for (const f of [...CHAR_FIELDS, ...WEAPON_FIELDS]) {
+    schema[f.key] = { type: f.type, length: INVENTORY_LEN };
+  }
+  for (const f of [...OVERVIEW_FIELDS, ...RESOURCE_SCALAR_FIELDS]) {
+    schema[f.key] = { type: f.type };
+  }
+  add("ag_crypto ag_player_f5 ag_alternative_path_save ag_player_have_news ag_inv_char_sort_increase ag_inv_wpn_sort_increase ag_battle_skip_conf_actions", { type: "bool" });
+  add("ag_inv_char_filter_class ag_inv_char_filter_rarity ag_inv_wpn_filter_class ag_inv_wpn_filter_rarity gen_path_name gen_path_desc", { type: "text" });
+  add("ag_sel_preset ag_inv_char_filter_formation ag_inv_char_filter_lvlup ag_inv_char_sort_id ag_inv_wpn_filter_equipped ag_inv_wpn_filter_lvlup ag_inv_wpn_sort_id ag_player_daily_raid gen_path_counts ag_event_shop_count_itms", { type: "int" });
+  add("ag_inv_modul_count ag_inv_card_own ag_inv_card_card_count_use ag_player_compl_missions ag_player_achive ag_drop_count_modul ag_raid_reload_maps", { type: "int", min: 0, length: 1000 });
+  add("ag_dialog_show ag_player_can_getgift ag_player_getgift ag_player_redemn_code", { type: "bool", length: 1000 });
+  add("ag_player_open_campaigns", { type: "bool", length: 200 });
+  add("ag_drop_count_char ag_drop_count_wpn", { type: "int", min: 0, length: 500 });
+  add("ag_player_lbx_count ag_player_lbx_pity_gold ag_player_lbx_pity_orange", { type: "int", min: 0, length: 100 });
+  add("ag_player_daily_shop_id ag_player_daily_shop_buy ag_player_daily_shop_buy_max ag_player_daily_shop_type ag_event_shop_player_buy", { type: "int", min: 0, length: 50 });
+  add("ag_formation_live2d", { type: "int", min: 0, length: 100 });
+  add("ag_formation_preset_name", { type: "text", length: 20 });
+  add("ag_formation_preset_num", { type: "formation", length: 20 });
+  add("ag_player_values", { type: "int", minLength: 1, maxLength: 1000 });
+  add("gen_path_type gen_path_difficault gen_path_ico gen_path_reward gen_path_map gen_path_time gen_path_reward_multiplex", { type: "int", length: 1000 });
+  add("gen_path_pos_x gen_path_pos_y", { type: "float", length: 1000 });
+  for (let n = 1; n <= 13; n++) {
+    schema["ag_inv_wpn_mod_" + n] = { type: "int", min: 0, table: "module", length: 1000 };
+  }
+  for (const key of ["ag_inv_char_id", "ag_inv_wpn_id"]) {
+    Object.assign(schema[key], { min: 0, table: key === "ag_inv_char_id" ? "character" : "weapon" });
+  }
+  for (const key of ["ag_inv_char_first_weapon", "ag_inv_wpn_to_char"]) {
+    Object.assign(schema[key], { min: 0, max: INVENTORY_LEN - 1 });
+  }
+  for (const key of ["ag_inv_char_lvl", "ag_inv_char_exp", "ag_inv_char_need_exp", "ag_inv_char_kills", "ag_inv_wpn_lvl", "ag_inv_wpn_exp", "ag_inv_wpn_need_exp", "ag_user_lvl"]) {
+    schema[key].min = 0;
+  }
+  for (const key of ["ag_vol_music", "ag_vol_sfx", "ag_vol_ui"]) {
+    Object.assign(schema[key], { min: 0, max: 1 });
+  }
+  schema.ag_player_daily_shop_type.max = 2;
+  schema.ag_player_daily_shop_reload = { type: "int" };
+  schema.formatVersion = { type: "int", min: 1 };
+  schema.migrationCount = { type: "int", min: 0 };
+  return schema;
+})();
+
+function isMigrationMetadata(obj) {
+  return obj && typeof obj === "object" && !Array.isArray(obj) &&
+    (Object.hasOwn(obj, "formatVersion") || Object.hasOwn(obj, "migrationCount")) &&
+    !Object.keys(obj).some((k) => k.startsWith("ag_") || k.startsWith("gen_path_"));
+}
+
+function validateSaveSchema(obj, errors, warnings) {
+  const maxErrors = 100;
+  const fail = (path, reason) => {
+    if (errors.length < maxErrors) errors.push(path + ": " + reason);
+  };
+  const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  const checkValue = (v, rule, path) => {
+    if (errors.length >= maxErrors) return;
+    if (rule.type === "text") {
+      if (typeof v !== "string" || v.length > 4096) fail(path, "必须是长度不超过 4096 的字符串。");
+    } else if (rule.type === "bool") {
+      if (typeof v !== "boolean") fail(path, "必须是布尔值 true/false，不能用 0/1 或字符串代替。");
+    } else if (rule.type === "vec4") {
+      if (!isObject(v)) return fail(path, "必须是含 x/y/z/w 的颜色对象。");
+      for (const k of ["x", "y", "z", "w"]) checkValue(v[k], { type: "float", min: 0, max: 1 }, path + "." + k);
+    } else if (rule.type === "formation") {
+      if (!isObject(v)) return fail(path, "必须是编队对象，不能替换成一个数字。");
+      checkValue(v.ag_formation_preset_active, { type: "bool" }, path + ".ag_formation_preset_active");
+      for (const k of ["ag_formation_preset_unit_id", "ag_formation_preset_unit_cost", "ag_formation_preset_unit_hp"]) {
+        const nested = { type: "int", length: 100 };
+        if (k.endsWith("_id")) Object.assign(nested, { min: 0, max: INVENTORY_LEN - 1 });
+        checkArray(v[k], nested, path + "." + k);
+      }
+    } else {
+      const valid = rule.type === "int" ? Number.isSafeInteger(v)
+        : typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER;
+      if (!valid) return fail(path, rule.type === "int" ? "必须是安全整数，不能是字符串、小数或超大数值。" : "必须是有限且精度范围安全的数字。");
+      let max = rule.max ?? Number.MAX_SAFE_INTEGER;
+      if (rule.table && DATA && DATA[rule.table]) max = DATA[rule.table].prefix.length - 1;
+      const min = rule.min ?? -Number.MAX_SAFE_INTEGER;
+      if (v < min || v > max) fail(path, `数值必须在 ${min}..${max} 范围内。`);
+    }
+  };
+  const checkArray = (arr, rule, path) => {
+    if (!Array.isArray(arr)) return fail(path, "必须是数组。");
+    const min = rule.length ?? rule.minLength;
+    const max = rule.length ?? rule.maxLength;
+    if (arr.length < min || arr.length > max) {
+      return fail(path, rule.length !== undefined
+        ? `数组长度必须是 ${rule.length}，实际为 ${arr.length}。`
+        : `数组长度必须在 ${min}..${max} 范围内。`);
+    }
+    for (let i = 0; i < arr.length && errors.length < maxErrors; i++) checkValue(arr[i], rule, `${path}[${i}]`);
+  };
+  const required = isMigrationMetadata(obj) ? ["formatVersion", "migrationCount"]
+    : ["ag_inv_char_id", "ag_inv_wpn_id", "ag_inv_modul_count"];
+  for (const key of required) {
+    if (!Object.hasOwn(obj, key)) fail(key, "缺少必需字段。");
+  }
+  for (const [key, rule] of Object.entries(SAVE_SCHEMA)) {
+    if (!Object.hasOwn(obj, key)) continue; // Optional/version-specific fields are not synthesized.
+    if (rule.length !== undefined || rule.maxLength !== undefined) checkArray(obj[key], rule, key);
+    else checkValue(obj[key], rule, key);
+  }
+  // Bound every field, including unknown extensions, without interpreting their semantics.
+  let nodes = 0;
+  const walk = (v, path, depth) => {
+    if (errors.length >= maxErrors) return;
+    if (++nodes > 200000) return;
+    if (depth > 32) return fail(path, "嵌套超过 32 层。");
+    if (typeof v === "number" && (!Number.isFinite(v) || Math.abs(v) > Number.MAX_SAFE_INTEGER)) fail(path, "数字超出安全范围。");
+    if (typeof v === "string" && v.length > 4096) fail(path, "文本超过 4096 个字符。");
+    if (Array.isArray(v)) {
+      if (v.length > 10000) return fail(path, "数组超过安全上限 10000。");
+      for (let i = 0; i < v.length && nodes <= 200000 && errors.length < maxErrors; i++) walk(v[i], `${path}[${i}]`, depth + 1);
+    } else if (isObject(v)) {
+      for (const k of Object.keys(v)) {
+        if (nodes > 200000 || errors.length >= maxErrors) break;
+        walk(v[k], path + "." + k, depth + 1);
+      }
+    }
+  };
+  walk(obj, "存档", 0);
+  if (nodes > 200000) fail("存档", "字段/元素总数超过安全上限 200000。");
+  const unknown = Object.keys(obj).filter((k) => !Object.hasOwn(SAVE_SCHEMA, k));
+  if (unknown.length) warnings.push(`保留 ${unknown.length} 个未知字段：仅检查通用结构上限，未验证游戏含义。`);
+  if (!DATA) warnings.push("未加载数据字典，无法验证角色、武器和配件的 ID 上限。");
+  if (errors.length === maxErrors) warnings.push("错误过多，仅显示前 100 项；修复后重新校验。");
+}
+
+function assertSaveValid(obj) {
+  const v = validateSave(obj);
+  if (v.errors.length) throw new Error("存档校验失败，原有内容未替换：\n" + v.errors.slice(0, 5).join("\n") +
+    (v.errors.length > 5 ? `\n另有 ${v.errors.length - 5} 项错误。` : ""));
+  return v;
+}
+
 function validateSave(rootObj) {
   const errors = [];
   const warnings = [];
   if (!rootObj || typeof rootObj !== "object" || Array.isArray(rootObj)) {
     errors.push("存档不是 JSON 对象。");
     return { errors, warnings };
+  }
+
+  validateSaveSchema(rootObj, errors, warnings);
+  if (errors.length) return { errors, warnings };
+  if (isMigrationMetadata(rootObj)) return { errors, warnings };
+
+  const shopIds = rootObj.ag_player_daily_shop_id;
+  const shopTypes = rootObj.ag_player_daily_shop_type;
+  if (Array.isArray(shopIds) && Array.isArray(shopTypes)) {
+    for (let i = 0; i < shopIds.length; i++) {
+      const type = shopTypes[i];
+      const id = shopIds[i];
+      const kind = type === 1 ? "character" : type === 2 ? "weapon" : null;
+      if ((type === 0 && id !== 0) || (kind && (id < 1 || (DATA?.[kind] && id >= DATA[kind].prefix.length)))) {
+        errors.push(`ag_player_daily_shop_id[${i}]: 物品 ID 与商品类型不匹配或超出数据表范围。`);
+      }
+    }
   }
 
   const required = ["ag_inv_char_id", "ag_inv_wpn_id", "ag_inv_modul_count"];
@@ -1233,7 +1397,9 @@ function savePresets(list) {
 function validatePreset(p) {
   return p && typeof p === "object" &&
     Array.isArray(p.mods) && p.mods.length === 13 &&
-    p.mods.every((v) => Number.isFinite(v));
+    p.mods.every((v) => Number.isSafeInteger(v) && v >= 0 &&
+      (!DATA || !DATA.module || v < DATA.module.prefix.length)) &&
+    [p.name, p.weaponName].every((v) => v === undefined || (typeof v === "string" && v.length <= 4096));
 }
 
 function currentLoadout() {
@@ -1499,6 +1665,7 @@ function parseRaw() {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("必须是一个 JSON 对象。");
     }
+    assertSaveValid(parsed);
     pushHistory("导入原始 JSON");
     root = parsed;
     renderAll();
@@ -1541,6 +1708,7 @@ async function loadCompareFile(file) {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("对比存档 JSON 必须是对象。");
   }
+  assertSaveValid(parsed);
   compareRoot = parsed;
   compareName = file.name;
   compareKind = "characters";
@@ -1678,6 +1846,16 @@ function collectArrayRows(key, search, nameType) {
   return rows;
 }
 
+function arrayEditorHtml(key, row) {
+  if (SAVE_SCHEMA[key]?.type === "bool") {
+    return `<input class="arr-edit" data-idx="${row.i}" type="checkbox" ${row.v ? "checked" : ""}>`;
+  }
+  if (SAVE_SCHEMA[key]?.type === "formation") {
+    return `<span>编队对象（请在原始 JSON 页编辑，提交时校验）</span>`;
+  }
+  return `<input class="arr-edit" data-idx="${row.i}" type="number" step="1" value="${esc(row.v)}">`;
+}
+
 function renderIntArrayRows(tableId, key, search, nameType) {
   const tbody = document.querySelector("#" + tableId + " tbody");
   if (!root) {
@@ -1687,7 +1865,7 @@ function renderIntArrayRows(tableId, key, search, nameType) {
   const rows = collectArrayRows(key, search, nameType);
   tbody.innerHTML = rows.map((r) =>
     `<tr><td>${r.i}</td><td>${esc(r.name || "-")}</td>` +
-    `<td><input class="arr-edit" data-idx="${r.i}" type="number" step="1" value="${esc(r.v)}"></td></tr>`
+    `<td>${arrayEditorHtml(key, r)}</td></tr>`
   ).join("") || `<tr><td class="empty" colspan="3">没有匹配的条目。</td></tr>`;
 }
 
@@ -1700,7 +1878,7 @@ function renderIntArraySimple(tableId, key, search) {
   const rows = collectArrayRows(key, search, "");
   tbody.innerHTML = rows.map((r) =>
     `<tr><td>${r.i}</td>` +
-    `<td><input class="arr-edit" data-idx="${r.i}" type="number" step="1" value="${esc(r.v)}"></td></tr>`
+    `<td>${arrayEditorHtml(key, r)}</td></tr>`
   ).join("") || `<tr><td class="empty" colspan="2">没有匹配的条目。</td></tr>`;
 }
 
@@ -1713,6 +1891,10 @@ function applyArrayEdits(tableId, key) {
   const vals = [];
   for (const input of inputs) {
     const idx = Number(input.dataset.idx);
+    if (SAVE_SCHEMA[key]?.type === "bool") {
+      vals.push({ idx, v: input.checked });
+      continue;
+    }
     const s = input.value.trim();
     const v = s === "" ? 0 : Number(s);
     if (!Number.isInteger(v)) {
@@ -1747,7 +1929,12 @@ function missionBatch() {
     setStatus("批量值必须是大于等于 0 的整数。", "err");
     return;
   }
-  const value = Number(raw);
+  const isBool = SAVE_SCHEMA[missionKey]?.type === "bool";
+  if (isBool && raw !== "0" && raw !== "1") {
+    setStatus("布尔数组批量值只能是 0（false）或 1（true）。", "err");
+    return;
+  }
+  const value = isBool ? raw === "1" : Number(raw);
   const rows = collectArrayRows(missionKey, $("missionSearch").value, missionNameType(missionKey));
   if (!rows.length) {
     setStatus("当前没有匹配的条目。", "err");
@@ -2004,6 +2191,8 @@ function renderResourcesTab() {
 }
 
 function renderFieldTab() {
+  updateToolbar();
+  renderIssues();
   document.querySelectorAll(".sub-tab").forEach((b) =>
     b.classList.toggle("active", b.dataset.fieldtab === fieldTab)
   );
